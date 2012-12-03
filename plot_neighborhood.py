@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 import argparse
-import sys
+import os, sys
 
 import numpy as np
 import matplotlib
@@ -52,7 +52,7 @@ def parse_configfile( options ):
             if not line.startswith('#'):
                 try:
                     ifile, chrom, pos, winlen, reverse, gname, impath, txtpath, scale, bed, yaxis_max = line.split('\t')
-                    options.infile = ifile
+                    options.infiles = ifile.split()
                     options.chromosome = chrom
                     options.position = int(pos)
                     options.window_length = int(winlen)
@@ -98,10 +98,79 @@ def check_options( options, exit = True ):
             options.text = '%s.text' % options.gene_name
             sys.stdout.write('No --image and --text is specified, we will create both files with the given --gene_name (%s).\n' % options.gene_name)
 
-def plot( scores, positions, options ):
+
+def moving_average(x, n, type='simple'):
+    """
+    compute an n period moving average.
+
+    type is 'simple' | 'exponential'
+    """
+    x = np.asarray(x)
+    if type=='simple':
+        weights = np.ones(n)
+    else:
+        weights = np.exp(np.linspace(-1., 0., n))
+
+    weights /= weights.sum()
+
+
+    a =  np.convolve(x, weights, mode='full')[:len(x)]
+    a[:n] = a[n]
+    return a
+
+
+def plot( scores, positions, options, overlay=False):
+    """
+        overlay is True if many dots are plotted, in that case we adjust the settings
+    """
+    colors = ['orange', 'green', 'blue', 'red']
     fig = plt.figure(figsize = (20,6))
     ax = fig.add_subplot(111)
-    ax.plot(positions, scores,'-o', ms=15, lw=2, alpha=0.7, mfc='orange')
+
+    # the score and positions are a list ot lists, the user inputs more than one file and wants to have two different plots in on figure
+    if type(scores[0]) == list:
+        #print 'multiple plotting mode'
+        index = 0
+        # save the plots for the legend afterwarts
+        plots = list()
+        labels = list()
+        for sco, pos in zip(scores, positions):
+            color = colors[index]
+            pl = ax.plot(pos, sco, '-o', ms=15, lw=2, alpha=0.7, color=color)
+            plots.append(pl)
+            labels.append( os.path.basename(options.infiles[index]) )
+            index += 1
+        #ax.legend( plots, labels )
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                 box.width, box.height * 0.9])
+        l = ax.legend(plots, labels, loc='upper center', bbox_to_anchor=(0.5, 1.20),
+          ncol=1, fancybox=True, shadow=True, numpoints=1)
+        # workaround for broker markerscale
+        for lines in l.get_lines():
+            lines._legmarker.set_ms(10)
+    else:
+        if overlay:
+            """
+                creating data for the moving average
+            """
+            unique_positions = set(positions)
+            result = []
+            pos_counter = 0
+            positions = np.asarray(positions)
+            scores = np.asarray(scores)
+
+            for pos in unique_positions:
+                temp = scores[ positions==pos ]
+                temp = np.average(temp)
+                result.append((pos, temp))
+
+            ma_pos, ma_scores = zip(*sorted(result))
+            ax.plot(positions, scores, 'o', ms=5, lw=2, alpha=0.7, color='orange')
+            ax.plot(ma_pos, moving_average(ma_scores, 7), color='blue', lw=2, label='MA (7)')
+            ax.plot(ma_pos, moving_average(ma_scores, 20), color='red', lw=2, label='MA (20)')
+            ax.legend()
+
     ax.grid()
     # default for options.yaxis_max is 105
     ax.vlines(0, -5, options.yaxis_max, color='r', linewidth=5.0, linestyle=':', alpha=0.7)
@@ -131,7 +200,7 @@ def main( options ):
     """
         Main plotting function.
         The functions assumes that the bed- or bedgraph file is sorted.
-        
+
         If we find a base that fits our fiter criteria we save that state,
         so we can leave the bedline loop as soon as the creteria does not 
         match anymore. In a orted file that means that we can safely leave 
@@ -139,45 +208,56 @@ def main( options ):
     """
     if options.text:
         options.text = open(options.text, 'w+')
-    
+
     distance = options.window_length / 2
     scores = list()
     positions = list()
-    hit_found = False
-    for bed_line in open(options.infile):
-        if bed_line.startswith(options.chromosome):
-            try:
-                if options.bed:
-                    chrom, start, stop, text, score, strand = bed_line.strip().split()
-                else:
-                    chrom, start, stop, score = bed_line.strip().split()
-            except:
-                sys.exit('Wrong input format. Have a look at the --bed option.')
 
-            if chrom.strip() != options.chromosome and hit_found:
-                # if the chromosome did not match but we already encouterd a hit
-                # in previous iterations we can safely leave the loop
+    for infile in options.infiles:  
+        hit_found = False
+        scores_temp = list()
+        positions_temp = list()
+        coverage = list()
+        for bed_line in open(infile):
+            if bed_line.startswith(options.chromosome):
+                try:
+                    if options.bed:
+                        chrom, start, stop, cov, score, strand = bed_line.strip().split()
+                        if float(cov) < options.min_cov:
+                            continue
+                    else:
+                        chrom, start, stop, score = bed_line.strip().split()
+                except:
+                    sys.exit('Wrong input format. Have a look at the --bed option.')
+
+                if chrom.strip() != options.chromosome and hit_found:
+                    # if the chromosome did not match but we already encouterd a hit
+                    # in previous iterations we can safely leave the loop
+                    break
+                if chrom.strip() != options.chromosome:
+                    continue
+
+                start = int(start)
+                score = float(score)
+                if start >= options.position - distance and start <= options.position + distance:
+                    hit_found = True
+                    if options.text:
+                        options.text.write( bed_line )
+                    if options.scale:
+                        scores_temp.append( score * 100 )
+                    else:
+                        scores_temp.append( score )
+                    
+                    if options.reverse:
+                        positions_temp.append( (start - options.position)*-1 )
+                    else:
+                        positions_temp.append( start - options.position )
+                    if options.bed:
+                        coverage.append( cov )
+            elif hit_found:
                 break
-            if chrom.strip() != options.chromosome:
-                continue
-
-            start = int(start)
-            score = float(score)
-            if start >= options.position - distance and start <= options.position + distance:
-                hit_found = True
-                if options.text:
-                    options.text.write( bed_line )
-                if options.scale:
-                    scores.append( score * 100 )
-                else:
-                    scores.append( score )
-                
-                if options.reverse:
-                    positions.append( (start - options.position)*-1 )
-                else:
-                    positions.append( start - options.position )
-        elif hit_found:
-            break
+        scores.append(scores_temp)
+        positions.append(positions_temp)
 
     if options.image:
         plot( scores, positions, options )
@@ -185,7 +265,7 @@ def main( options ):
     if options.text:
         options.text.close()
 
-    return (scores, positions)
+    return (scores, positions, coverage)
 
 
 if __name__ == '__main__':
@@ -193,7 +273,7 @@ if __name__ == '__main__':
         description='Plots the methylation surrounding of one DNA spot.',
         epilog = __doc__,
         formatter_class = argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('-i', '--infile',
+    parser.add_argument('-i', '--infiles', nargs='+',
         help='Input file with all methylation sites aggregated into windows. In BED or bedgraph format.')
     parser.add_argument('--image', help='Path to the resulting image file. If not specified no image will be created.')
     parser.add_argument('--text', help='Path to the resulting coordinate file. If not specified no file will be created.')
@@ -208,33 +288,43 @@ if __name__ == '__main__':
     parser.add_argument('--configfile', help='Specify your input parameters in a config file. See more information below.')
     parser.add_argument('--yaxis_max', type=int, default=105, help='Set the maximum on the yaxis.')
 
+    parser.add_argument('--min-coverage', dest='min_cov', type=int, default=0.9, help='Minimal allowed coverage. Default: 0')
+
     parser.add_argument('--processors', type=int, default=multiprocessing.cpu_count())
 
     options = parser.parse_args()
 
     if not options.configfile and not options.position and not options.chromosome:
-        sys.exit('If you do not use --configfile you need to specify --chromosome and --positions.')
+        sys.exit('If you do not use --configfile you need to specify the chromosome (-c), the position (-p) and the inputfile (-i).')
 
     if options.configfile:
         scores = list()
         positions = list()
+        coverage = list()
 
         p = multiprocessing.Pool( options.processors )
         results = p.map_async(main, parse_configfile(options))
         results_iterator = results.get()
 
-        for s, p in results_iterator:
+        for s, p, c in results_iterator:
             scores += s
             positions += p
+            coverage += c
 
-        positions, scores = zip(*sorted(zip(positions, scores)))
+        #print scores
+        scores_merged = list()
+        positions_merged = list()
+        map(scores_merged.extend, scores)
+        map(positions_merged.extend, positions)
+        positions, scores = zip(*sorted(zip(positions_merged, scores_merged)))
         options.image = 'all_merged.png'
         options.gene_name = 'Superimpose'
-        plot( scores, positions, options )
+        #print positions
+        plot( scores, positions, options, overlay=True)
 
         with open('all_merged.txt', 'w+') as handle:
-            for pos, score in zip(positions, scores):
-                handle.write('%s\t%s\n' % (pos, score))
+            for pos, score, cov in zip(positions, scores, coverage):
+                handle.write('%s\t%s\t%s\n' % (pos, score, cov))
     else:
         check_options( options )
         main(options)
