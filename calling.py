@@ -5,10 +5,22 @@ import os, sys
 import argparse
 import pysam
 from collections import defaultdict
-import numpy
+import numpy as np
 import multiprocessing
 import tempfile
 import shutil
+
+"""
+    The standard output is BED6 format, unless the option --methylkit is given.
+    In that case the output will be in the methylkit format like the example below.
+
+    Example Mythylkit methcall file:
+
+    chrBase	chr	base	strand	coverage	freqC	freqT
+    chr7.3295868	chr7	3295868	R	14	85.71	14.29
+
+"""
+
 
 def get_reading_mode( options ):
     if options.is_bam:
@@ -41,8 +53,8 @@ def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  
             CGmethHash[key][2] += 1
     else:
         #if genomic base is non-CpG
-        if not nonCGmethHash.has_key(key):
-            nonCGmethHash[ key ] = [ 0, 0, 0 ]
+        #if not nonCGmethHash.has_key(key):
+        #    nonCGmethHash[ key ] = [ 0, 0, 0 ]
 
         if letter.upper() == "X" and not CHGmethHash.has_key(key):
             CHGmethHash[key] = [0,0,0]
@@ -50,30 +62,31 @@ def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  
             CHHmethHash[key] = [0,0,0]
 
         if letter == "X":
-            nonCGmethHash[key][0] += 1
+            #nonCGmethHash[key][0] += 1
             CHGmethHash[key][0] += 1
         elif letter == "H":
-            nonCGmethHash[key][0] += 1
+            #nonCGmethHash[key][0] += 1
             CHHmethHash[key][0] += 1
         elif letter == "x":
-            nonCGmethHash[key][1] += 1
+            #nonCGmethHash[key][1] += 1
             CHGmethHash[key][1] += 1
         elif letter == "h":
-            nonCGmethHash[key][1] += 1
+            #nonCGmethHash[key][1] += 1
             CHHmethHash[key][1] += 1
         else:
-           # this condition will never be used
-            nonCGmethHash[key][2] += 1
+            #this condition will never be used
+            #nonCGmethHash[key][2] += 1
             if  letter.upper() == "X":
                 CHGmethHash[key][2] += 1
             else:
                 CHHmethHash[key][2] += 1
-    return (CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash)
+    #return (CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash)
 
 
 # process a given CG methlation hash
 # writes the filter passing CGs to output file
-def processCGmethHash( CGmethHash, out, min_cov ):
+def processCGmethHash( CGmethHash, out, options ):
+    min_cov = options.min_cov
     for key in CGmethHash.keys():
         strand, chr, loc = key.split('|')
         noCs,noTs,noOs = CGmethHash[key]
@@ -81,9 +94,18 @@ def processCGmethHash( CGmethHash, out, min_cov ):
         Cperc = "%.2f" % ( 100.0 * noCs / temp_sum )
         Tperc = "%.2f" % ( 100.0 * noTs / temp_sum )
         if float( noTs + noCs ) / temp_sum > 0.9 and temp_sum >= min_cov:
-            out.write( "\t".join( [chr+"."+loc, chr, loc, strand, str(temp_sum), Cperc, Tperc] ) + "\n")
+            if options.is_methylkit:
+                out.write( "\t".join( ["%s.%s" % (chr,loc), chr, loc, strand, str(temp_sum), Cperc, Tperc] ) + "\n")
+            else:
+                if strand == 'F':
+                    strand = '+'
+                elif strand == 'R':
+                    strand = '-'
+                out.write( "\t".join( [chr, str(int(loc)-1), loc, "%s" % temp_sum, Cperc, strand] ) + "\n")
+    CGmethHash = {}
 
-def processCHmethHash( CGmethHash, out, min_cov ):
+def processCHmethHash( CGmethHash, out, options ):
+    min_cov = options.min_cov
     for key in CGmethHash.keys():
         strand, chr, loc = key.split('|')
         noCs,noTs,noOs = CGmethHash[key]
@@ -91,12 +113,21 @@ def processCHmethHash( CGmethHash, out, min_cov ):
         Cperc = "%.2f" % ( 100.0 * noCs / temp_sum )
         Tperc = "%.2f" % ( 100.0 * noTs / temp_sum )
         if float( noTs + noCs ) / temp_sum > 0.9 and temp_sum >= min_cov:
-            out.write( "\t".join( [chr+"."+loc, chr, loc, strand, str( temp_sum ), Cperc, Tperc] ) + "\n")
-
+            if options.is_methylkit:
+                out.write( "\t".join( ["%s.%s" % (chr,loc), chr, loc, strand, str( temp_sum ), Cperc, Tperc] ) + "\n")
+            else:
+                if strand == 'F':
+                    strand = '+'
+                elif strand == 'R':
+                    strand = '-'
+                out.write( "\t".join( [chr, str(int(loc)-1), loc, "%s" % temp_sum, Cperc, strand] ) + "\n")
+    CGmethHash = {}
 
 # process a given non CG methlation hash
 # writes the filter passing Cs to a hash, that hash will be used to calculate conversion rate later on
-def processnonCGmethHash( nonCGmethHash, CTconvArray, min_cov ):
+"""
+def processnonCGmethHash( nonCGmethHash, summary_forward_temp, summary_reverse_temp, options ):
+    min_cov = options.min_cov
     for key in nonCGmethHash.keys():
         strand, chr, loc = key.split('|')
         noCs,noTs,noOs = nonCGmethHash[key]
@@ -104,15 +135,15 @@ def processnonCGmethHash( nonCGmethHash, CTconvArray, min_cov ):
         Cperc = "%.2f" % (100.0 * noCs / temp_sum )
         Tperc = "%.2f" % (100.0 * noTs / temp_sum )
         if float( noTs + noCs ) / temp_sum > 0.95 and temp_sum >= min_cov:
-            CTconvArray[strand].append( (noTs * 100.0) / temp_sum )
-    return CTconvArray
-
+            if strand == 'F':
+                summary_forward_temp.write( "%s\n" % ((noTs * 100.0) / temp_sum) )
+            else:
+                summary_reverse_temp.write( "%s\n" % ((noTs * 100.0) / temp_sum) )
+    nonCGmethHash = {}
+"""
 
 def process_sam(options, chromosome, temp_dir):
-
-    min_cov = options.min_cov
     min_qual = options.min_qual
-
     # create temp files
     if options.CpG:
         if temp_dir != 'temp_dir':
@@ -129,6 +160,11 @@ def process_sam(options, chromosome, temp_dir):
             # multiprocessing mode
             CHG_out_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CHG', delete=False)
 
+    """
+    if options.summary:
+        summary_reverse_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='nonCpG_reverse', delete=False)
+        summary_forward_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='nonCpG_forward', delete=False)
+    """
 
     reading_mode = get_reading_mode( options )
     samfile = pysam.Samfile( options.input_path, reading_mode )
@@ -138,7 +174,6 @@ def process_sam(options, chromosome, temp_dir):
         offset = 64
 
     nonCGmethHash = dict()
-    pMeth_nonCG = defaultdict(list)
     CGmethHash = dict()
     CHHmethHash = dict()
     CHGmethHash = dict()
@@ -150,27 +185,29 @@ def process_sam(options, chromosome, temp_dir):
 
     # if the reading morde is 'r' and not 'rb', we have a sam file and multiprocessing is disabled
     # and we iterate over the whole genome
-    if reading_mode == 'r' or options.processors == 1:
+    if reading_mode == 'r' or options.processors <= 1:
         samfile_iterator = samfile
     else:
         samfile_iterator = samfile.fetch(chromosome)
 
     # for every read in the sam file
     for iteration, read in enumerate(samfile_iterator):
-        if iteration % 500000 == 0 and iteration != 0:
+        """
+        if iteration % 1000 == 0 and iteration != 0:
             # write out the collected results and clean the dictionary
             # otherwise the dictionary would be to large and slowing the process down dramatically
             if temp_dir != 'temp_dir':
                 if options.CpG:
-                    processCGmethHash( CGmethHash, out_temp, min_cov )
+                    processCGmethHash( CGmethHash, out_temp, options )
                 if options.CHH:
-                    processCHmethHash( CHHmethHash, CHH_out_temp, min_cov)
+                    processCHmethHash( CHHmethHash, CHH_out_temp, options)
                 if options.CHG:
-                    processCHmethHash( CHGmethHash, CHG_out_temp, min_cov)
+                    processCHmethHash( CHGmethHash, CHG_out_temp, options)
                 CGmethHash = dict()
                 CHHmethHash = dict()
                 CHGmethHash = dict()
-
+        """
+    
         start = read.pos + 1
         end = read.aend #read.rlen + start + 1 # or len(read.seq)+start+1
         chr = samfile.getrname( read.tid )
@@ -194,7 +231,6 @@ def process_sam(options, chromosome, temp_dir):
         elif read.opt('XR') == 'GA' and read.opt('XG') == 'GA':
             # complementary to original bottom strand, bismark says + strand to this
             strand = '-'
-
         # Check if the file is sorted
         if chr == chr_pre:
             if start_pre > start:
@@ -223,9 +259,23 @@ def process_sam(options, chromosome, temp_dir):
         }
         """
 
-        if (start - last_pos > 100 and last_pos != -1) or (chr != last_chrom and last_chrom != None):
-            processnonCGmethHash( nonCGmethHash, pMeth_nonCG, min_cov )
-            nonCGmethHash = dict()
+        # we can write the results as soon as we processing a new chromosome
+        # or a sequence/read with a distance larger than the read length away from the last processed sequence/read
+        # Therewith we garantee that we are counting the coverage in a correct way -> given that the SAM/BAM file is sorted
+        if (start - last_pos > options.readlen and last_pos != -1) or (chr != last_chrom and last_chrom != None):
+            #processnonCGmethHash( nonCGmethHash, summary_forward_temp, summary_reverse_temp, options )
+            #nonCGmethHash = dict()
+            if temp_dir != 'temp_dir':
+                if options.CpG:
+                    processCGmethHash( CGmethHash, out_temp, options )
+                if options.CHH:
+                    processCHmethHash( CHHmethHash, CHH_out_temp, options)
+                if options.CHG:
+                    processCHmethHash( CHGmethHash, CHG_out_temp, options)
+                CGmethHash = dict()
+                CHHmethHash = dict()
+                CHGmethHash = dict()
+
 
         for index, letter in enumerate(quals):
             if ord(letter) - offset < min_qual or mcalls[index] == '.':
@@ -241,18 +291,22 @@ def process_sam(options, chromosome, temp_dir):
         last_chrom = chr
 
     samfile.close()
-    processnonCGmethHash( nonCGmethHash, pMeth_nonCG, min_cov )
+    #if options.summary:
+    #    processnonCGmethHash( nonCGmethHash, summary_forward_temp, summary_reverse_temp, options )
+    #    nonCGmethHash = dict()
+    #    summary_forward_temp.close()
+    #    summary_reverse_temp.close()
 
     if temp_dir != 'temp_dir':
         # in multiprocessing mode
         if options.CpG:
-            processCGmethHash( CGmethHash, out_temp, min_cov )
+            processCGmethHash( CGmethHash, out_temp, options )
         if options.CHH:
-            processCHmethHash( CHHmethHash, CHH_out_temp, min_cov)
+            processCHmethHash( CHHmethHash, CHH_out_temp, options)
         if options.CHG:
-            processCHmethHash( CHGmethHash, CHG_out_temp, min_cov)
+            processCHmethHash( CHGmethHash, CHG_out_temp, options)
 
-        # create temp files
+        # close temp files
         if options.CpG:
             out_temp.close()
 
@@ -262,7 +316,7 @@ def process_sam(options, chromosome, temp_dir):
         if options.CHG:
             CHG_out_temp.close()
 
-    return (CGmethHash, CHHmethHash, CHGmethHash, pMeth_nonCG)
+    return (CGmethHash, CHHmethHash, CHGmethHash)
 
 
 
@@ -286,46 +340,65 @@ def main( options ):
     out = None
     CHH_out = None
     CHG_out = None
-    pMeth_nonCG = defaultdict(list)
     min_cov = options.min_cov
 
     if options.CpG:
         out = open( options.CpG, 'w+')
-        out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+        if options.is_header:
+            if options.is_methylkit:
+                out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+            else:
+                out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
     if options.CHH:
         CHH_out = open( options.CHH, 'w+' )
-        CHH_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+        if options.is_header:
+            if options.is_methylkit:
+                CHH_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+            else:
+                out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
     if options.CHG:
         CHG_out =  open( options.CHG, 'w+' )
-        CHG_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+        if options.is_header:
+            if options.is_methylkit:
+                CHG_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+            else:
+                out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
     # if the reading morde is 'r' and not 'rb', we have a sam file and multiprocessing is disabled.
     if reading_mode == 'rb' and options.processors > 1:
         multiproc = True
         print "Multiprocessing mode started with %s" % options.processors
-        
+
         # creating temp dir and and store all temporary results there
         temp_dir = tempfile.mkdtemp()
         samfile = pysam.Samfile( options.input_path, reading_mode )
         # building a triple for each multiprocessing run -> (temp_dir, options, one chromosome)
-        references = zip([temp_dir]*len(samfile.references), [options]*len(samfile.references), samfile.references)
+        refs = samfile.references
+        references = zip([temp_dir]*len( refs ), [options]*len( refs ), refs)
         samfile.close()
 
+        #run_calc(references[1])
+        #sys.exit()
+        results_iterator = []
         p = multiprocessing.Pool( options.processors )
-        results = p.map_async(run_calc, references)
-        results_iterator = results.get()
+        p.map_async(run_calc, references, callback=results_iterator.extend)
+        p.close()
+        p.join()
+        #if options.summary:
+        #    temp_summary_forward = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
+        #    temp_summary_reverse = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
     else:
         multiproc = False
         print 'Single Mode activated. You can use multiple processors if you use a indexed BAM file.'
         results_iterator = [ run_calc( ('temp_dir', options, 'all_chromosomes_at_once') ) ]
+        #temp_summary_forward = tempfile.NamedTemporaryFile(delete=False)
+        #temp_summary_reverse = tempfile.NamedTemporaryFile(delete=False)
 
 
     for result in results_iterator:
-        (CGmethHash, CHHmethHash, CHGmethHash, pMeth_nonCG_temp) = result
-        pMeth_nonCG["F"] = pMeth_nonCG.get( "F", []) + pMeth_nonCG_temp.get( "F", [])
-        pMeth_nonCG["R"] = pMeth_nonCG.get( "R", []) + pMeth_nonCG_temp.get( "R", [])
+        (CGmethHash, CHHmethHash, CHGmethHash) = result
 
         # if not in multiprocessing mode, than write down all collected results
         if not multiproc:
@@ -341,48 +414,65 @@ def main( options ):
         for filename in os.listdir(temp_dir):
             if filename.startswith('CpG'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename)), out )
+        out.close()
     if options.CHH and multiproc:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CHH'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename)), CHH_out )
+        CHH_out.close()
     if options.CHG and multiproc:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CHG'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename)), CHG_out )
-
+        CHG_out.close()
+    """
+    if options.summary and multiproc:
+        for filename in os.listdir(temp_dir):
+            if filename.startswith('nonCpG_forward'):
+                shutil.copyfileobj( open(os.path.join(temp_dir, filename)), temp_summary_forward )
+            if filename.startswith('nonCpG_reverse'):
+                shutil.copyfileobj( open(os.path.join(temp_dir, filename)), temp_summary_reverse )
+        temp_summary_forward.close()
+        temp_summary_reverse.close()
+        summary_forward = np.loadtxt( temp_summary_forward.name )
+        summary_reverse = np.loadtxt( temp_summary_reverse.name )
+    """
     # cleaning temporary working directory
     if multiproc:
-        if options.CHG:
-            CHG_out.close()
-        if options.CHH:
-            CHH_out.close()
-        if options.CpG:
-            out.close()
         shutil.rmtree( temp_dir )
 
+    """
+    if not options.summary:
+        return
+
+    for arg, value in sorted(vars(options).items()):
+        options.summary.write("Argument %s: %r", arg, value)
+
+    options.summary.write('\n\n')
+
     # get the conversion rate and write it out!!
-    numF = len( pMeth_nonCG.get( "F", []) )
-    numR = len( pMeth_nonCG.get( "R", []) )
+    numF = len( summary_forward )#len( pMeth_nonCG.get( "F", []) )
+    numR = len( summary_reverse )#len( pMeth_nonCG.get( "R", []) )
 
     if numF == 0 and numR == 0:
         sys.exit("\nnot enough alignments that pass coverage and phred score thresholds to calculate conversion rates\n EXITING....\n")
 
-    both_strands = pMeth_nonCG.get( "F", []) + pMeth_nonCG.get( "R", [])
+    both_strands = np.concatenate( (summary_forward, summary_reverse) )#pMeth_nonCG.get( "F", []) + pMeth_nonCG.get( "R", [])
 
     medFconvRate = 0
     medRconvRate = 0
-    AvFconvRate = float( sum( pMeth_nonCG["F"] ) ) / numF
-    AvRconvRate = float( sum( pMeth_nonCG["R"] ) ) / numR
-    AvconvRate = float( sum( both_strands ) ) / (numF + numR)
-    print sum( both_strands ), numF, numR
+    AvFconvRate = sum( summary_forward ) / numF
+    AvRconvRate = sum( summary_reverse ) / numR
+    AvconvRate = sum( both_strands ) / (numF + numR)
+
 
     if numF > 0:
-        medFconvRate = numpy.median( pMeth_nonCG["F"] )
+        medFconvRate = np.median( summary_forward )
 
     if numR > 0:
-        medRconvRate = numpy.median( pMeth_nonCG[ "R" ] )
+        medRconvRate = np.median( summary_reverse )
 
-    medconvRate = numpy.median( both_strands )
+    medconvRate = np.median( both_strands )
 
     totCpG = len( both_strands )
 
@@ -397,8 +487,8 @@ def main( options ):
     res += "total otherC considered (Reverse) (>95%% C+T): %s\n" % numR
     res += "average conversion rate (Reverse) = %s\n" % AvRconvRate
     res += "median conversion rate (Reverse) = %s\n" % medRconvRate
-    print res
-
+    options.summary.write('res')
+    """
 
 
 if __name__ == '__main__':
@@ -428,6 +518,18 @@ if __name__ == '__main__':
 
     parser.add_argument("--bam", dest="is_bam", action="store_true", default=False,
                     help="If specified the input file is in BAM format, otherwise the type is guessed from the filename extension.")
+
+    parser.add_argument("--methylkit", dest="is_methylkit", action="store_true", default=False,
+                    help="Output will be in methylkit format. Default output format is BED6 format.")
+
+    parser.add_argument("--header", dest="is_header", action="store_true", default=False,
+                    help="Print header into the output file.")
+
+    parser.add_argument("--readlen", default=100, type=int,
+                    help="Read length (default:100)")
+
+    #parser.add_argument("--summary",
+    #                help="Create a summary file, this can take a significant amount of time and memory.")
 
     parser.add_argument('-p', '--processors', type=int, 
         default=multiprocessing.cpu_count())
