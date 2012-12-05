@@ -13,8 +13,11 @@ def merge_sites(c1, c2):
     c1_chrom, c1_start, c1_end, c1_cov, c1_meth, c1_strand = c1.strip().split('\t')
     c2_chrom, c2_start, c2_end, c2_cov, c2_meth, c2_strand = c2.strip().split('\t')
     if c1_strand != c2_strand and int(c1_end) == int(c2_end) -1 :
-        # merge with mean
-        cm = c1_chrom, c1_start, c1_end, str((float(c1_cov)+float(c2_cov))/2.0), str((float(c1_meth)+float(c2_meth))/2.0), c1_strand
+        # merge with weigthed mean
+        c1_cov, c2_cov, c1_meth, c2_meth = map(float, [c1_cov, c2_cov, c1_meth, c2_meth])
+        merged_cov = c1_cov + c2_cov
+        merged_meth = (c1_meth * c1_cov) + (c2_meth * c2_cov) / merged_cov
+        cm = c1_chrom, c1_start, c1_end, str(merged_cov), str(merged_cov), c1_strand
         return True, cm
     else:
         c1 = (c1_chrom, c1_start, c1_end, c1_cov, c1_meth, c1_strand)
