@@ -123,12 +123,12 @@ class Window():
         Such a window will start with a min_size and grow dynamically until a 
         treshold is undercuted.
     """
-    def __init__(self, min_window_length = 4, max_cpg_distance = None, min_methylation = 25, last = 4):
+    def __init__(self, min_window_length = 4, max_cpg_distance = None, min_delta_methylation = 25, last = 4):
         # constraints
         self.min_window_length = min_window_length
         self.max_cpg_distance = max_cpg_distance
-        self.min_methylation = min_methylation
-        self.last = last # check last n postitions ot the cpgs if they are over min_methylation
+        self.min_delta_methylation = min_delta_methylation
+        self.last = last # check last n postitions ot the cpgs if they are over min_delta_methylation
         # window properties
         self.chrom = None
         self.start = None
@@ -175,11 +175,11 @@ class Window():
         except ZeroDivisionError:
             delta = 0.0
 
-        if  delta < self.min_methylation:
-            #print 'kick: differential meth to low', self.delta, delta, self.min_methylation, cpg.start
+        if  delta < self.min_delta_methylation:
+            #print 'kick: differential meth to low', self.delta, delta, self.min_delta_methylation, cpg.start
             return False
 
-        if self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) ) < self.min_methylation:
+        if self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) ) < self.min_delta_methylation:
             #print self.get_last_n_cpgs( self.last )
             #print self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) )
             #print 'kick: last_n', self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) )
@@ -329,7 +329,7 @@ def main(options):
         control_quantil = mquantiles( np.loadtxt(options.control, delimiter='\t', usecols=(3,)), prob = [options.filter_quantil])[0]
         affected_quantil = mquantiles( np.loadtxt(options.affected, delimiter='\t', usecols=(3,)), prob = [options.filter_quantil])[0]
 
-    win = Window(options.min_window_length, options.max_cpg_distance, options.min_methylation, options.check_last_n)
+    win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n)
     old_chrom = False
     if options.destrand:
         tmp_control = tempfile.NamedTemporaryFile(delete=False, prefix='/home/bag/projects/')
@@ -356,11 +356,11 @@ def main(options):
 
         if old_chrom and old_chrom != c_chrom:
             # write window to the file if they fullfil the requirements
-            if len(win) >= options.min_window_length and win.delta >= options.min_methylation:
+            if len(win) >= options.min_window_length and win.delta >= options.min_delta_methylation:
                 win.strip_cpgs()
                 if len(win) >= options.min_window_length:
                     win.write_to_bed_file( options.outfile )
-            win = Window(options.min_window_length, options.max_cpg_distance, options.min_methylation, options.check_last_n)
+            win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n)
 
         cpg = CpG( c_chrom, int(c_start), int(c_end), c_strand, options.min_cov, options.max_cov, control_quantil, affected_quantil )
 
@@ -373,7 +373,7 @@ def main(options):
         cpg.calculate_weighted_methylation()
 
         if not win.add_cpg( cpg, options.destrand):
-            if len(win) >= options.min_window_length and win.delta >= options.min_methylation:
+            if len(win) >= options.min_window_length and win.delta >= options.min_delta_methylation:
                 #if counter > 30:
                 #    sys.exit()
                 #print win.delta
@@ -395,13 +395,13 @@ def main(options):
                 # if after stripping the window is still larger than the min_window_length size, write it out
                 if len(win) >= options.min_window_length:
                     win.write_to_bed_file( options.outfile )
-                if len(win) == 4 and win.delta < options.min_methylation:
+                if len(win) == 4 and win.delta < options.min_delta_methylation:
                     print 'wat?', win.delta
                     for a in win.cpgs:
                         print a
                     sys.exit()
                 # create a new window with, if we have remainings frome the previouse window, add these at start cpgs
-                win = Window(options.min_window_length, options.max_cpg_distance, options.min_methylation, options.check_last_n)
+                win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n)
 
                 if right_side_cpgs:
                     #print 'right_side_cpgs'
@@ -409,7 +409,7 @@ def main(options):
                         win.add_cpg( cpg )
 
             else:
-                win = Window(options.min_window_length, options.max_cpg_distance, options.min_methylation, options.check_last_n)
+                win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n)
 
         old_chrom = c_chrom
     if options.destrand:
@@ -441,8 +441,8 @@ if __name__ == '__main__':
     parser.add_argument("--min-window-length", dest="min_window_length", default=4, type=int,
                     help="minimal window length (default:4)")
 
-    parser.add_argument("--min-methylation", dest="min_methylation", default=25, type=int,
-                    help="minimal mehylation state (default:25)")
+    parser.add_argument("--min-delta-methylation", dest="min_delta_methylation", default=25, type=int,
+                    help="minimal delta between the two mehylation states (default:25)")
 
     parser.add_argument("--check-last-n", dest="check_last_n", metavar = 'N', default=4, type=int,
                     help="check last N CpG sites if they fullfill all constraints (default:4)")
