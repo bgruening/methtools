@@ -12,6 +12,11 @@ except:
     print 'The much faster fisher library is not installed. Fallback to scipy.'
 
 
+"""
+    That file needs intersected inputfiles, so that each site is present in both files, affected and control.
+"""
+
+
 def fisher_filtering(control_file, affected_file, filtered_control_file, filtered_affected_file, cutoff):
     for control_line, affected_line in izip(open(control_file), open(affected_file)):
         c_chrom, c_start, c_end, c_cov, c_meth, c_strand = control_line.strip().split('\t')
@@ -23,15 +28,17 @@ def fisher_filtering(control_file, affected_file, filtered_control_file, filtere
             assert( c_strand == a_strand )
         except AssertionError:
             raise
-        control = (float(c_cov), float(c_meth))
-        affected = (float(a_cov), float(a_meth))
+        c_cov, c_meth, a_cov, a_meth = map(float, [c_cov, c_meth, a_cov, a_meth])
+        control_methylated = c_cov * c_meth / 100
+        control_unmethylated = c_cov - control_methylated
+        affected_methylated = a_cov * a_meth / 100
+        affected_unmethylated = a_cov - affected_methylated
         try:
             #Try to use the much faster fisher module from http://pypi.python.org/pypi/fisher/
-            p = fisher_exact.pvalue(control[0], control[1], affected[0], affected[1])
+            p = fisher_exact.pvalue(control_methylated, control_unmethylated, affected_methylated, affected_unmethylated)
             pvalue = p.two_tail
         except:
-            #raise
-            oddsratio, pvalue = stats.fisher_exact([control, affected], alternative='two-sided')
+            oddsratio, pvalue = stats.fisher_exact([(control_methylated, control_unmethylated), (affected_methylated, affected_unmethylated)], alternative='two-sided')
 
         if pvalue <= cutoff:
             filtered_control_file.write(control_line)
