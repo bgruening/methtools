@@ -15,7 +15,6 @@ except:
     print 'The much faster fisher library is not installed. Fallback to scipy.'
 
 
-
 class CpG():
     def __init__(self, chrom, start, end, strand, min_cov = 0, max_cov = 50, control_filter_quantil = None, affected_filter_quantil = None):
         # constraints
@@ -28,7 +27,6 @@ class CpG():
         self.start = start
         self.end = end
         self.strand = strand
-        self.fisher_pvalue = None
         self.cov_control = 0.0
         self.cov_control_original = 0.0
         self.meth_control = 0.0
@@ -42,9 +40,9 @@ class CpG():
         self.skip = 0
 
     def __repr__(self):
-        return '%s\t%s\t%s (c:%s, m:%s) (c:%s, m:%s) skip:%s fisher:%s\n' % (self.chrom, 
+        return '%s\t%s\t%s control(c:%s, m:%s) affected(c:%s, m:%s) skip:%s\n' % (self.chrom, 
             self.start, self.strand, 
-            self.cov_control, self.meth_control, self.cov_affected, self.meth_affected, self.skip, self.fisher_pvalue)
+            self.cov_control, self.meth_control, self.cov_affected, self.meth_affected, self.skip)
 
     """
     @property
@@ -99,22 +97,6 @@ class CpG():
         self.weighted_methylation_control = self.meth_control * self.cov_control
         self.weighted_methylation_affected = self.meth_affected * self.cov_affected
 
-    def calculate_differential_methylation_fisher_exact(self, filter = False):
-        control = (self.cov_control, self.meth_control)
-        affected = (self.cov_affected, self.meth_affected)
-        try:
-            #Try to use the much faster fisher module from http://pypi.python.org/pypi/fisher/
-            p = fisher_exact.pvalue(control[0], control[1], affected[0], affected[1])
-            pvalue = p.two_tail
-        except:
-            oddsratio, pvalue = stats.fisher_exact([control, affected], alternative='two-sided')
-        self.fisher_pvalue = pvalue
-        if filter != False and pvalue > cutoff:
-            self.skip = 1
-        return self.fisher_pvalue
-
-
-
 
 
 class Window():
@@ -138,10 +120,10 @@ class Window():
         self.skip_sites = 0
 
         # save intermediate results for methylation calculation
-        self.sum_affected = 0.0
-        self.sum_control = 0.0
-        self.cov_control = 0.0
-        self.cov_affected = 0.0
+        self.sum_meth_affected = 0.0
+        self.sum_meth_control = 0.0
+        self.sum_cov_control = 0.0
+        self.sum_cov_affected = 0.0
         self.delta = 0.0
 
     def __len__(self):
@@ -169,8 +151,8 @@ class Window():
         #print self.methylation
         #print cpg.differential_methylation
         try:
-            con = (self.sum_control + cpg.weighted_methylation_control) / (self.cov_control + cpg.cov_control)
-            aff = (self.sum_affected + cpg.weighted_methylation_affected) / (self.cov_affected + cpg.cov_affected)
+            con = (self.sum_meth_control + cpg.weighted_methylation_control) / (self.sum_cov_control + cpg.cov_control)
+            aff = (self.sum_meth_affected + cpg.weighted_methylation_affected) / (self.sum_cov_affected + cpg.cov_affected)
             delta = abs( con - aff )
         except ZeroDivisionError:
             delta = 0.0
@@ -179,11 +161,11 @@ class Window():
             #print 'kick: differential meth to low', self.delta, delta, self.min_delta_methylation, cpg.start
             return False
 
-        if self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) ) < self.min_delta_methylation:
+        if abs( self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) ) ) < self.min_delta_methylation:
             #print self.get_last_n_cpgs( self.last )
             #print self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) )
             #print 'kick: last_n', self.calculate_window_methylation( self.get_last_n_cpgs( self.last ) )
-            pass#return False
+            return False
         return True
 
     def get_last_cpg(self):
@@ -212,13 +194,13 @@ class Window():
         else:
             self.end = 0
         if temp_cpg.skip == 0:
-            self.sum_affected -= temp_cpg.weighted_methylation_affected
-            self.sum_control -= temp_cpg.weighted_methylation_control
-            self.cov_control -= temp_cpg.cov_control
-            self.cov_affected -= temp_cpg.cov_affected
+            self.sum_meth_affected -= temp_cpg.weighted_methylation_affected
+            self.sum_meth_control -= temp_cpg.weighted_methylation_control
+            self.sum_cov_control -= temp_cpg.cov_control
+            self.sum_cov_affected -= temp_cpg.cov_affected
             try:
-                con = self.sum_control / self.cov_control
-                aff = self.sum_affected / self.cov_affected
+                con = self.sum_meth_control / self.sum_cov_control
+                aff = self.sum_meth_affected / self.sum_cov_affected
                 self.delta = abs( con - aff )
             except ZeroDivisionError:
                 self.delta = 0
@@ -240,45 +222,71 @@ class Window():
             self.window_length += 1
             self.skip_sites += cpg.skip
             if cpg.skip == 0:
-                self.sum_affected += cpg.weighted_methylation_affected
-                self.sum_control += cpg.weighted_methylation_control
-                self.cov_control += cpg.cov_control
-                self.cov_affected += cpg.cov_affected
-                con = self.sum_control / self.cov_control
-                aff = self.sum_affected / self.cov_affected
-                self.delta = abs( con - aff )
-            
-            #print 'ccc', cpg
-            #for a in self.cpgs:
-            #    print a
-            #print '%2.1f'%self.delta, '%2.1f'%self.calculate_window_methylation(self.cpgs)
-            #print self.delta, self.calculate_window_methylation(self.cpgs)
-            #print type(self.delta), type(self.calculate_window_methylation(self.cpgs))
-            #t = self.calculate_window_methylation(self.cpgs)
-            #assert('%2.1f'%self.delta == '%2.1f'%self.calculate_window_methylation(self.cpgs))
-            
+                self.sum_meth_affected += cpg.weighted_methylation_affected
+                self.sum_meth_control += cpg.weighted_methylation_control
+                self.sum_cov_control += cpg.cov_control
+                self.sum_cov_affected += cpg.cov_affected
+                con = self.sum_meth_control / self.sum_cov_control
+                aff = self.sum_meth_affected / self.sum_cov_affected
+                self.delta = con - aff
+
             return True
         else:
             return False
 
     def calculate_window_methylation(self, cpgs):
-        sum_control = 0.0
-        sum_affected = 0.0
-        cov_control = 0.0
-        cov_affected = 0.0
+        sum_meth_control = 0.0
+        sum_meth_affected = 0.0
+        sum_cov_control = 0.0
+        sum_cov_affected = 0.0
         for cpg in cpgs:
             if cpg.skip == 0:
-                sum_affected += cpg.weighted_methylation_affected
-                sum_control += cpg.weighted_methylation_control
-                cov_control += cpg.cov_control
-                cov_affected += cpg.cov_affected
+                sum_meth_affected += cpg.weighted_methylation_affected
+                sum_meth_control += cpg.weighted_methylation_control
+                sum_cov_control += cpg.cov_control
+                sum_cov_affected += cpg.cov_affected
         try:
-            control = sum_control / cov_control
-            affected = sum_affected / cov_affected
+            control = sum_meth_control / sum_cov_control
+            affected = sum_meth_affected / sum_cov_affected
         except ZeroDivisionError:
             return 0.0
-        delta = abs( control - affected )
-        return delta
+        return control - affected
+
+
+    def calculate_differential_methylation_fisher_exact(self):
+        """
+        sum_meth_control = 0
+        sum_meth_affected = 0
+        for cpg in self.cpgs:
+            if cpg.skip == 0:
+                sum_meth_control += cpg.meth_control
+                sum_meth_affected += cpg.meth_affected
+        control_methylated = self.sum_cov_control / len(self) * sum_meth_control / len(self) / 100
+        control_unmethylated = self.sum_cov_control - control_methylated
+        affected_methylated = self.sum_cov_affected / len(self) * sum_meth_affected / len(self) / 100
+        affected_unmethylated = self.sum_cov_affected - affected_methylated
+        """
+
+        control = self.sum_meth_control / self.sum_cov_control
+        affected = self.sum_meth_affected / self.sum_cov_affected
+        control_methylated = self.sum_cov_control * control / 100
+        control_unmethylated = self.sum_cov_control - control_methylated
+        affected_methylated = self.sum_cov_affected * affected / 100
+        affected_unmethylated = self.sum_cov_affected - affected_methylated
+        try:
+            #Try to use the much faster fisher module from http://pypi.python.org/pypi/fisher/
+            p = fisher_exact.pvalue(control_methylated, control_unmethylated, affected_methylated, affected_unmethylated)
+            pvalue = p.two_tail
+        except:
+            oddsratio, pvalue = stats.fisher_exact([(control_methylated, control_unmethylated), (affected_methylated, affected_unmethylated)], alternative='two-sided')
+        """print pvalue, len(self)
+
+        print control_methylated, control_unmethylated
+        for c in self.cpgs:
+            print c
+        sys.exit()"""
+        return pvalue
+
 
     def strip_cpgs(self):
         # left strip
@@ -312,12 +320,17 @@ class Window():
         index = max(n, self.window_length)
         return self.cpgs[ self.window_length - index:]
 
-    def write_to_bed_string(self):
-        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (self.chrom, self.start, self.end, self.window_length, self.delta, 0, self.end - self.start)
+    def write_to_bed_string(self, fisher = False):
+        ret = "%s\t%s\t%s\t%s\t%s\t%s\t%s" % (self.chrom, self.start, self.end, self.window_length, self.delta, 0, self.end - self.start)
+        if fisher:
+            pvalue = self.calculate_differential_methylation_fisher_exact()
+            ret += '\t%e\n' % pvalue
+        else:
+            ret += '\n'
         return ret
 
-    def write_to_bed_file(self, handle):
-        handle.write( self.write_to_bed_string() )
+    def write_to_bed_file(self, handle, fisher = False):
+        handle.write( self.write_to_bed_string(fisher) )
         #handle.flush()
 
 
@@ -356,10 +369,10 @@ def main(options):
 
         if old_chrom and old_chrom != c_chrom:
             # write window to the file if they fullfil the requirements
-            if len(win) >= options.min_window_length and win.delta >= options.min_delta_methylation:
+            if len(win) >= options.min_window_length and abs(win.delta) >= options.min_delta_methylation:
                 win.strip_cpgs()
                 if len(win) >= options.min_window_length:
-                    win.write_to_bed_file( options.outfile )
+                    win.write_to_bed_file( options.outfile, options.fisher )
             win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n)
 
         cpg = CpG( c_chrom, int(c_start), int(c_end), c_strand, options.min_cov, options.max_cov, control_quantil, affected_quantil )
@@ -367,13 +380,10 @@ def main(options):
         cpg.add_control( float(c_cov), float(c_meth) )
         cpg.add_affected( float(a_cov), float(a_meth) )
 
-        if options.fisher:
-            cpg.calculate_differential_methylation_fisher_exact()
-
         cpg.calculate_weighted_methylation()
 
         if not win.add_cpg( cpg, options.destrand):
-            if len(win) >= options.min_window_length and win.delta >= options.min_delta_methylation:
+            if len(win) >= options.min_window_length and abs(win.delta) >= options.min_delta_methylation:
                 #if counter > 30:
                 #    sys.exit()
                 #print win.delta
@@ -394,9 +404,9 @@ def main(options):
                     a = True
                 # if after stripping the window is still larger than the min_window_length size, write it out
                 if len(win) >= options.min_window_length:
-                    win.write_to_bed_file( options.outfile )
-                if len(win) == 4 and win.delta < options.min_delta_methylation:
-                    print 'wat?', win.delta
+                    win.write_to_bed_file( options.outfile, options.fisher )
+                if len(win) == 4 and abs(win.delta) < options.min_delta_methylation:
+                    print 'wat?', abs(win.delta)
                     for a in win.cpgs:
                         print a
                     sys.exit()
@@ -450,7 +460,7 @@ if __name__ == '__main__':
     parser.add_argument("--max-cpg-distance", dest="max_cpg_distance", default=None, type=int,
                     help="maximal CpG distance (default:None)")
 
-    parser.add_argument('--fisher', type=float, help='Please provide a cutoff for the fisher exact test. Example: 0.05')
+    parser.add_argument('--fisher', action='store_true', default=False, help='Calculate the pvalue of each window with a fisher-exact-test')
 
     parser.add_argument('--destrand', action='store_true', default=False, help='Combine CpGs.')
 
