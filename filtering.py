@@ -84,7 +84,7 @@ if __name__ == '__main__':
                     help="minimal delta between the two mehylation states (default:25)")
 
     options = parser.parse_args()
-    if None in [options.pvalue, options.min_cov, options.max_cov]:
+    if [options.pvalue, options.min_cov, options.max_cov].count(None) == 3:
         sys.exit('You need to specify at least one filter parameter: --pvalue, --min-coverage or --max-coverage')
     filtering(options.control, options.affected, options.ocontrol, options.oaffected, options.pvalue, options.min_cov, options.max_cov, options.min_delta_methylation)
 
