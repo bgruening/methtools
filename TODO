@@ -1,0 +1,5 @@
+- version number
+- setuptools, binary distribution
+- remove destrand option in dynamic_tiling
+- give static_tiling a little bit of love
+- plotting tool -> tar the output for galaxy
