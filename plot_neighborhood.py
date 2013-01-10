@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import multiprocessing
 import copy
+from collections import defaultdict
+import math
+import signal
 
 __doc__ = """
 
@@ -83,6 +86,36 @@ def parse_configfile( options ):
                 check_options( options, exit = False )
                 yield copy.deepcopy( options )
 
+def parse_coordinatefile( options ):
+    """
+    """
+    if options.coordinatefile == '-':
+        coordinatefile = sys.stdin
+    else:
+        coordinatefile = open(options.coordinatefile)
+
+    for line in coordinatefile:
+        if line.strip() == '':
+            continue
+        if not line.startswith('#'):
+            try:
+                chrom, start, end, foo = line.strip().split('\t', 3)
+                options.chromosome = chrom
+                dist = int(end) - int(start)   #  144311276-144311255 = 21
+                rounded_win_len = dist + 1000#(int(math.ceil( dist / 100.0)) * 100) + 1000 # -> 200
+                options.position = int(start) + (dist / 2 ) # 144311255 + 11
+                options.window_length = rounded_win_len
+                #options.gene_name = ""options.position
+                options.image = os.path.join(os.getcwd(),'chr%s_%s_%s.png' % (chrom, start, end))
+                options.text = os.path.join(os.getcwd(),'chr%s_%s_%s.txt' % (chrom, start, end))
+            except:
+                raise
+                sys.stdout.write('WARNING:\n\tThe following line in your configfile has an error. \n\t%s\n\tProbably a column is missing.\n' % line )
+                continue
+            check_options( options, exit = False )
+            yield copy.deepcopy( options )
+
+
 def check_options( options, exit = True ):
     """
         Add a few checks to the provided user options.
@@ -113,7 +146,6 @@ def moving_average(x, n, type='simple'):
 
     weights /= weights.sum()
 
-
     a =  np.convolve(x, weights, mode='full')[:len(x)]
     a[:n] = a[n]
     return a
@@ -128,7 +160,7 @@ def plot( scores, positions, options, overlay=False):
     ax = fig.add_subplot(111)
 
     # the score and positions are a list ot lists, the user inputs more than one file and wants to have two different plots in on figure
-    if type(scores[0]) == list:
+    if not overlay:#type(scores[0]) == list:
         #print 'multiple plotting mode'
         index = 0
         # save the plots for the legend afterwarts
@@ -146,42 +178,52 @@ def plot( scores, positions, options, overlay=False):
                  box.width, box.height * 0.9])
         l = ax.legend(plots, labels, loc='upper center', bbox_to_anchor=(0.5, 1.20),
           ncol=1, fancybox=True, shadow=True, numpoints=1)
-        # workaround for broker markerscale
+        # workaround for broken markerscale
         for lines in l.get_lines():
             lines._legmarker.set_ms(10)
     else:
-        if overlay:
-            """
-                creating data for the moving average
-            """
-            unique_positions = set(positions)
-            result = []
-            pos_counter = 0
-            positions = np.asarray(positions)
-            scores = np.asarray(scores)
+        #if overlay:
+        """
+            creating data for the moving average
+        """
+        unique_positions = set(positions)
+        result = []
+        pos_counter = 0
+        positions = np.asarray(positions)
+        scores = np.asarray(scores)
 
-            for pos in unique_positions:
-                temp = scores[ positions==pos ]
-                temp = np.average(temp)
-                result.append((pos, temp))
+        for pos in unique_positions:
+            temp = scores[ positions==pos ]
+            temp = np.average(temp)
+            result.append((pos, temp))
 
-            ma_pos, ma_scores = zip(*sorted(result))
-            ax.plot(positions, scores, 'o', ms=5, lw=2, alpha=0.7, color='orange')
-            ax.plot(ma_pos, moving_average(ma_scores, 7), color='blue', lw=2, label='MA (7)')
-            ax.plot(ma_pos, moving_average(ma_scores, 20), color='red', lw=2, label='MA (20)')
-            ax.legend()
+        ma_pos, ma_scores = zip(*sorted(result))
+        ax.plot(positions, scores, '.', ms=3, lw=2, alpha=0.7, color='orange')
+        #ax.plot(ma_pos, moving_average(ma_scores, 7), color='blue', lw=2, label='MA (7)')
+        ax.plot(ma_pos, moving_average(ma_scores, 20), color='red', lw=2, label='MA (20)')
+        ax.legend()
 
     ax.grid()
     # default for options.yaxis_max is 105
-    ax.vlines(0, -5, options.yaxis_max, color='r', linewidth=5.0, linestyle=':', alpha=0.7)
+
+    if overlay:
+        yaxis_min = -105
+        yaxis_annotation = -104
+    else:
+        yaxis_min = -5
+        yaxis_annotation = -4
+
+    ax.vlines(0, yaxis_min, options.yaxis_max, color='r', linewidth=5.0, linestyle=':', alpha=0.7)
 
     if options.gene_name:
-        tss = 'TSS - %s' % options.gene_name
+        tss = 'chr: %s; pos: %s; %s' % (options.chromosome, options.position, options.gene_name)
+    elif overlay:
+        tss = 'Overlay point'
     else:
-        tss = 'TSS'
+        tss = 'chr: %s; pos: %s' % (options.chromosome, options.position)
 
     el = Ellipse((2, -1), 0.5, 0.5)
-    ax.annotate(tss, xy=(0, 0),  xycoords='data',
+    ax.annotate(tss, xy=(0, yaxis_annotation),  xycoords='data',
                 xytext=(-100, -100), textcoords='offset points',
                 size=20,
                 arrowprops=dict(arrowstyle='fancy',#"wedge,tail_width=0.7",
@@ -190,8 +232,8 @@ def plot( scores, positions, options, overlay=False):
                                 connectionstyle="arc3,rad=-0.3"),
                 )
 
-    # default is 105
-    ax.set_ylim([-5, options.yaxis_max])
+    # default for yaxis is 105
+    ax.set_ylim([yaxis_min, options.yaxis_max])
     extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
     fig.savefig(options.image, bbox_inches=extent.expanded(1.1, 1.6))
 
@@ -207,22 +249,34 @@ def main( options ):
         the loop without missing bases.
     """
     if options.text:
-        options.text = open(options.text, 'w+')
+        outfiles = list()
+        if len(options.infiles) > 1:
+            for counter, foo in enumerate(options.infiles):
+                temp = list(os.path.splitext( options.text ))
+                temp.insert(1, '_%s' % (counter+1))
+                outfiles.append( ''.join(temp) )
+        else:
+            outfiles.append( options.text )
 
     distance = options.window_length / 2
     scores = list()
     positions = list()
+    coverage = list()
 
-    for infile in options.infiles:  
+    for infile, outfile in zip(options.infiles, outfiles):
+        if options.text and not options.overlay_only:
+            outfile = open(outfile, 'w+')
         hit_found = False
         scores_temp = list()
         positions_temp = list()
-        coverage = list()
+        coverage_temp = list()
+
         for bed_line in open(infile):
             if bed_line.startswith(options.chromosome):
                 try:
                     if options.bed:
                         chrom, start, stop, cov, score, strand = bed_line.strip().split()
+                        # im fall von 2 files, schmeist er nur einnen raus, evt beides implementieren? TODO
                         if float(cov) < options.min_cov:
                             continue
                     else:
@@ -239,31 +293,31 @@ def main( options ):
 
                 start = int(start)
                 score = float(score)
-                if start >= options.position - distance and start <= options.position + distance:
+                if start >= (options.position - distance) and start <= (options.position + distance):
                     hit_found = True
-                    if options.text:
-                        options.text.write( bed_line )
+                    if options.text and not options.overlay_only:
+                        outfile.write( bed_line )
                     if options.scale:
                         scores_temp.append( score * 100 )
                     else:
                         scores_temp.append( score )
-                    
+
                     if options.reverse:
                         positions_temp.append( (start - options.position)*-1 )
                     else:
                         positions_temp.append( start - options.position )
-                    if options.bed:
-                        coverage.append( cov )
+
+                    coverage_temp.append( cov )
             elif hit_found:
                 break
         scores.append(scores_temp)
         positions.append(positions_temp)
+        coverage.append(coverage_temp)
+        if options.text and not options.overlay_only:
+            outfile.close()
 
-    if options.image:
+    if options.image and not options.overlay_only:
         plot( scores, positions, options )
-
-    if options.text:
-        options.text.close()
 
     return (scores, positions, coverage)
 
@@ -279,118 +333,88 @@ if __name__ == '__main__':
     parser.add_argument('--text', help='Path to the resulting coordinate file. If not specified no file will be created.')
 
     parser.add_argument('-w', '--window_length', type=int, default=1000, help='Length of the surrounding window - default: 1000')
-    parser.add_argument('-c', '--chromosome', help='Chromosome name')
+    parser.add_argument('-c', '--chromosome', help='Chromosome name', default=None)
     parser.add_argument('-r', '--reverse', action='store_true', default=False, help='Invert the x-axis to reflect the reverse strand of the gene.')
-    parser.add_argument('-p', '--position', type=int, help='Chromosome position')
+    parser.add_argument('-p', '--position', type=int, help='Chromosome position', default=None)
     parser.add_argument('--scale', action='store_true', default=False, help='scale the scores to be between 0 and 100')
     parser.add_argument('--gene_name', help='If given use that name in the plot.')
     parser.add_argument('--bed', action='store_true', default=False, help='Input is in BED format, rather than in bedgraph format.')
-    parser.add_argument('--configfile', help='Specify your input parameters in a config file. See more information below.')
+    parser.add_argument('--configfile', default=None, help='Specify your input parameters in a config file. See more information below.')
+    parser.add_argument('--coordinatefile', default=None, help='Extract the coordinates from a bed file.')
     parser.add_argument('--yaxis_max', type=int, default=105, help='Set the maximum on the yaxis.')
-
-    parser.add_argument('--min-coverage', dest='min_cov', type=int, default=0.9, help='Minimal allowed coverage. Default: 0')
+    parser.add_argument('--overlay-only', dest='overlay_only', action='store_true', default=False, help='In configfile mode, only create the overlay image')
+    parser.add_argument('--min-coverage', dest='min_cov', type=int, default=0.0, help='Minimal allowed coverage. Default: 0')
 
     parser.add_argument('--processors', type=int, default=multiprocessing.cpu_count())
 
     options = parser.parse_args()
 
-    if not options.configfile and not options.position and not options.chromosome:
+    if [options.coordinatefile, options.configfile].count(None) == 2 and (options.position == None or options.chromosome == None):
         sys.exit('If you do not use --configfile you need to specify the chromosome (-c), the position (-p) and the inputfile (-i).')
 
-    if options.configfile:
+    if options.configfile or options.coordinatefile:
+        """
+            The config file mode is used to execute plottings in batches. Each line in such a configfile is used to plot one gene region.
+            If two input files are given in one line, its also possible to plot control vs. affected per gene.
+            In the end all gene will be plotted in one plot using the TSS as overlay-point.
+        """
         scores = list()
         positions = list()
         coverage = list()
 
         p = multiprocessing.Pool( options.processors )
-        results = p.map_async(main, parse_configfile(options))
+        if options.configfile:
+            results = p.map_async(main, parse_configfile(options))
+        else:
+            results = p.map_async(main, parse_coordinatefile(options))
         results_iterator = results.get()
+        positions_scores = list()
+        merged_handle = open('all_merged.txt', 'w+')
+        position_dict = defaultdict(dict)
 
+        # for each gene region we get a list of scores (methylation levels), gene positions and the corresponding coverage
         for s, p, c in results_iterator:
             scores += s
             positions += p
             coverage += c
+            # if you habe specified two file for one gene region, iterate over it
+            position_dict = defaultdict(dict)
+            for pos_list, score_list, cov_list in zip(p, s, c):
+                for pos, score, cov in zip(pos_list, score_list, cov_list):
+                    if pos in position_dict:
+                        # seconf value for that position
+                        position_dict[pos]['delta'] -= score
+                        position_dict[pos]['meth2'] = score
+                        position_dict[pos]['cov2'] = cov
+                    else:
+                        position_dict[pos]['delta'] = score
+                        position_dict[pos]['meth1'] = score
+                        position_dict[pos]['cov1'] = cov
 
-        #print scores
-        scores_merged = list()
-        positions_merged = list()
-        map(scores_merged.extend, scores)
-        map(positions_merged.extend, positions)
-        positions, scores = zip(*sorted(zip(positions_merged, scores_merged)))
+                    #position_dict[ pos ] -= score
+                    #position_dict[ pos ] = position_dict[ pos ]
+            for pos, value_dict in position_dict.items():
+                #write position into to dict to use it as replacement in the output string
+                value_dict.update({'pos': pos})
+                if not 'meth2' in value_dict:
+                    # only one file is processed
+                    merged_handle.write('%(pos)s\t%(meth1)s\t%(cov1)s\t%(delta)s\n' % (value_dict))
+                else:
+                    merged_handle.write('%(pos)s\t%(meth1)s\t%(cov1)s\t%(meth2)s\t%(cov2)s\t%(delta)s\n' % (value_dict))
+                positions_scores.append( [pos, value_dict['delta']] )
+
+
+        positions, scores = zip(*sorted( positions_scores ))
         options.image = 'all_merged.png'
-        options.gene_name = 'Superimpose'
-        #print positions
+        options.gene_name = None
         plot( scores, positions, options, overlay=True)
 
-        with open('all_merged.txt', 'w+') as handle:
-            for pos, score, cov in zip(positions, scores, coverage):
-                handle.write('%s\t%s\t%s\n' % (pos, score, cov))
+        #with open('all_merged.txt', 'w+') as handle:
+        #    for pos, score, cov in zip(positions, scores, coverage):
+        #        handle.write('%s\t%s\t%s\n' % (pos, score, cov))
+
     else:
         check_options( options )
         main(options)
-
-
-    test = """
-chr1	17907070	17907070	cov:23	100.00	+
-chr1	17907071	17907071	cov:25	96.00	-
-chr1	17907114	17907114	cov:15	26.67	+
-chr1	17907115	17907115	cov:14	35.71	-
-chr1	17907178	17907178	cov:10	70.00	+
-chr1	17907307	17907307	cov:10	40.00	+
-chr1	17907326	17907326	cov:11	36.36	+
-chr1	17907384	17907384	cov:17	100.00	+
-chr1	17907393	17907393	cov:15	100.00	+
-"""
-    test = """
-chr18	61414351	61414351	cov:19	100.00	+
-chr18	61414352	61414352	cov:19	100.00	-
-chr18	61414432	61414432	cov:22	63.64	+
-chr18	61414433	61414433	cov:18	100.00	-
-chr18	61414439	61414439	cov:20	95.00	+
-chr18	61414440	61414440	cov:15	100.00	-
-chr18	61414451	61414451	cov:20	100.00	+
-chr18	61414460	61414460	cov:18	100.00	+
-chr18	61414978	61414978	cov:10	70.00	+
-chr18	61415032	61415032	cov:11	100.00	-
-chr18	61415060	61415060	cov:12	100.00	+
-chr18	61415475	61415475	cov:14	100.00	-
-chr18	61415748	61415748	cov:16	75.00	+
-chr18	61415749	61415749	cov:28	100.00	-
-chr18	61415785	61415785	cov:17	94.12	-
-chr18	61415816	61415816	cov:13	84.62	+
-chr18	61415817	61415817	cov:14	57.14	-
-chr18	61416205	61416205	cov:19	100.00	+
-chr18	61416206	61416206	cov:15	93.33	-
-chr18	61416277	61416277	cov:16	50.00	-
-chr18	61416351	61416351	cov:16	0.00	-
-chr18	61416401	61416401	cov:17	5.88	+
-chr18	61416402	61416402	cov:43	2.33	-
-chr18	61416702	61416702	cov:26	0.00	+
-chr18	61416703	61416703	cov:18	5.56	-
-chr18	61416794	61416794	cov:20	10.00	+
-chr18	61416795	61416795	cov:15	0.00	-
-chr18	61416809	61416809	cov:18	0.00	+
-chr18	61416810	61416810	cov:17	0.00	-
-chr18	61416826	61416826	cov:21	4.76	+
-chr18	61416827	61416827	cov:20	0.00	-
-chr18	61416883	61416883	cov:17	5.88	+
-chr18	61416884	61416884	cov:20	15.00	-
-chr18	61416959	61416959	cov:12	58.33	+
-chr18	61416960	61416960	cov:12	16.67	-
-chr18	61416993	61416993	cov:13	30.77	+
-chr18	61417066	61417066	cov:10	30.00	-
-chr18	61417084	61417084	cov:16	6.25	-
-chr18	61417175	61417175	cov:13	100.00	+
-chr18	61417176	61417176	cov:16	75.00	-
-chr18	61417202	61417202	cov:14	85.71	+
-chr18	61417230	61417230	cov:15	100.00	+
-chr18	61417288	61417288	cov:11	90.91	-
-chr18	61417313	61417313	cov:14	92.86	-
-chr18	61417596	61417596	cov:14	100.00	+
-chr18	61417597	61417597	cov:25	52.00	-
-chr18	61417822	61417822	cov:10	60.00	-
-chr18	61418073	61418073	cov:10	50.00	-
-chr18	61418173	61418173	cov:17	94.12	+
-"""
 
 
