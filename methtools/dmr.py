@@ -8,7 +8,7 @@ import tempfile
 from scipy.stats.mstats import mquantiles
 from itertools import izip
 from scipy import stats
-from destrand import merge
+
 try:
     import fisher as fisher_exact
 except:
@@ -258,15 +258,6 @@ def dmr(options):
 
     win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed)
     old_chrom = False
-    if options.destrand:
-        tmp_control = tempfile.NamedTemporaryFile(delete=False, prefix='/home/bag/projects/')
-        merge(open(options.control), open(tmp_control.name, 'w+'))
-        tmp_control.close()
-        tmp_affected = tempfile.NamedTemporaryFile(delete=False, prefix='/home/bag/projects/')
-        tmp_affected.close()
-        merge(open(options.affected), open(tmp_affected.name,'w+'))
-        options.control = tmp_control.name
-        options.affected = tmp_affected.name
 
     for control, affected in izip(open(options.control), open(options.affected)):
         c_chrom, c_start, c_end, c_cov, c_meth, c_strand = control.strip().split('\t')
@@ -306,11 +297,6 @@ def dmr(options):
             win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed)
         old_chrom = c_chrom
 
-    if options.destrand:
-        # remove tempfiles
-        os.remove(tmp_affected.name)
-        os.remove(tmp_control.name)
-
 
 def main():
     parser = argparse.ArgumentParser(description='Extract differential methylated regions.')
@@ -349,8 +335,6 @@ def main():
                     help="maximal CpG distance (default:None)")
 
     parser.add_argument('--fisher', action='store_true', default=False, help='Calculate the pvalue of each window with a fisher-exact-test')
-
-    parser.add_argument('--destrand', action='store_true', default=False, help='Combine CpGs.')
 
     parser.add_argument('--hyper', action='store_true', default=False, help='Output only hyper methylated DMRs.')
     parser.add_argument('--hypo', action='store_true', default=False, help='Output only hypo methylated DMRs.')
