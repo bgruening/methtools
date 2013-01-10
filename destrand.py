@@ -12,7 +12,7 @@ def merge_sites(c1, c2):
     """
     c1_chrom, c1_start, c1_end, c1_cov, c1_meth, c1_strand = c1.strip().split('\t')
     c2_chrom, c2_start, c2_end, c2_cov, c2_meth, c2_strand = c2.strip().split('\t')
-    if c1_strand != c2_strand and int(c1_end) == int(c2_end) - 1:
+    if c1_strand != c2_strand and int(c1_end) == (int(c2_end) - 1):
         # merge with weigthed mean
         c1_cov, c2_cov, c1_meth, c2_meth = map(float, [c1_cov, c2_cov, c1_meth, c2_meth])
         merged_cov = c1_cov + c2_cov
@@ -31,7 +31,7 @@ def merge(sample, outfile):
             previouse_side = sample_line
             continue
         else:
-            merged, merged_sample = merge_sites (previouse_side ,sample_line)
+            merged, merged_sample = merge_sites (previouse_side, sample_line)
 
             if merged:
                 previouse_side = None
