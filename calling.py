@@ -168,7 +168,6 @@ def process_sam(options, chromosome, temp_dir):
 
     reading_mode = get_reading_mode( options )
     samfile = pysam.Samfile( options.input_path, reading_mode )
-
     offset = 33
     if options.phred64:
         offset = 64
@@ -188,8 +187,11 @@ def process_sam(options, chromosome, temp_dir):
     if reading_mode == 'r' or options.processors <= 1:
         samfile_iterator = samfile
     else:
-        samfile_iterator = samfile.fetch(chromosome)
-
+        try:
+            samfile_iterator = samfile.fetch(chromosome)
+        except:
+            sys.stderr.write('Could not fetch chromosome from BAM file. Probably the index is missing or currupted.\n')
+            return (CGmethHash, CHHmethHash, CHGmethHash)
     # for every read in the sam file
     for iteration, read in enumerate(samfile_iterator):
         """
@@ -207,7 +209,7 @@ def process_sam(options, chromosome, temp_dir):
                 CHHmethHash = dict()
                 CHGmethHash = dict()
         """
-    
+
         start = read.pos + 1
         end = read.aend #read.rlen + start + 1 # or len(read.seq)+start+1
         chr = samfile.getrname( read.tid )
@@ -510,8 +512,8 @@ if __name__ == '__main__':
     parser.add_argument("--phred64", dest="phred64", action="store_true", default=False,
                     help="quality scores phred64 scale used otherwise phred33 is the default")
 
-    parser.add_argument("--mincov", dest="min_cov", default=10, type=int,
-                    help="min coverage (default:10)")
+    parser.add_argument("--mincov", dest="min_cov", default=0, type=int,
+                    help="min coverage (default:0)")
 
     parser.add_argument("--minqual", dest="min_qual", default=20, type=int,
                     help="minquality   (default:20)")
