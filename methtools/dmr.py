@@ -100,7 +100,7 @@ class Window():
             return True
         #print '---',self.calculate_window_methylation( self.get_last_n_cpgs( self.last_n ) ), len(self.get_last_n_cpgs( self.last_n )), self.last_n
         # get the last_n cpg site from the current window, n-1 because we want to check with the new cpg site
-        if self.allow_failed:
+        if self.allow_failed > 0:
             last_n_cpgs = self.get_last_n_cpgs( self.allow_failed -1 )
             # add new cpg site to the end
             last_n_cpgs.append(cpg)
@@ -109,11 +109,10 @@ class Window():
             for test_cpg in last_n_cpgs:
                 if abs(test_cpg.delta) < self.min_delta_methylation:
                     failed_cpgs += 1
-            if failed_cpgs == self.allow_failed:
-                #print '#########failed_cpg_in a row', last_n_cpgs
+            if failed_cpgs >= self.allow_failed:
                 return False
 
-        if self.last_n:
+        if self.last_n > 0:
             last_n_cpgs = self.get_last_n_cpgs( self.last_n -1 )
             last_n_cpgs.append(cpg)
             # check the last n cpg sites if they are in the mean over the min_delta_methylation
