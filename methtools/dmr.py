@@ -100,8 +100,11 @@ class Window():
             return True
         #print '---',self.calculate_window_methylation( self.get_last_n_cpgs( self.last_n ) ), len(self.get_last_n_cpgs( self.last_n )), self.last_n
         # get the last_n cpg site from the current window, n-1 because we want to check with the new cpg site
-        if self.allow_failed > 0:
-            last_n_cpgs = self.get_last_n_cpgs( self.allow_failed -1 )
+        if self.allow_failed != None:
+            if self.allow_failed == 0:
+                last_n_cpgs = list()
+            else:
+                last_n_cpgs = self.get_last_n_cpgs( self.allow_failed -1 )
             # add new cpg site to the end
             last_n_cpgs.append(cpg)
 
@@ -132,7 +135,7 @@ class Window():
 
     def get_last_n_cpgs(self, n):
         index = min( n, len(self) )
-        return self.cpgs[ -index : ]
+        return self.cpgs[ len(self) - index : ]
 
     def add_cpg(self, cpg):
         if self._check_cpg( cpg ):
