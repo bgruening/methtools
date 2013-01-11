@@ -132,7 +132,7 @@ class Window():
 
     def get_last_n_cpgs(self, n):
         index = min( n, len(self) )
-        return self.cpgs[ len(self) - index : ]
+        return self.cpgs[ -index : ]
 
     def add_cpg(self, cpg):
         if self._check_cpg( cpg ):
