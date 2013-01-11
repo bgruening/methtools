@@ -331,7 +331,7 @@ def main():
                     help="check last N CpG sites if they fullfill all constraints (default:4)")
 
     parser.add_argument("--allow-failed", dest="allow_failed", metavar = 'N', default=None, type=int,
-                    help="how many sites are allowed to fail in the checked last-n sites (default: )")
+                    help="how many sites are allowed to fail in the checked last-n sites (default: No check! That is different from --allow-failed 0)")
 
     parser.add_argument("--max-cpg-distance", dest="max_cpg_distance", default=None, type=int,
                     help="maximal CpG distance (default:None)")
