@@ -176,11 +176,11 @@ def plot( scores, positions, options, overlay=False):
         box = ax.get_position()
         ax.set_position([box.x0, box.y0 + box.height * 0.1,
                  box.width, box.height * 0.9])
-        l = ax.legend(plots, labels, loc='upper center', bbox_to_anchor=(0.5, 1.20),
-          ncol=1, fancybox=True, shadow=True, numpoints=1)
+        ax.legend(labels, loc='upper center', bbox_to_anchor=(0.5, 1.20),
+          ncol=1, fancybox=True, shadow=True, numpoints=1, markerscale=10)
         # workaround for broken markerscale
-        for lines in l.get_lines():
-            lines._legmarker.set_ms(10)
+        #for lines in l.get_lines():
+        #    lines._legmarker.set_ms(10)
     else:
         #if overlay:
         """
@@ -224,7 +224,7 @@ def plot( scores, positions, options, overlay=False):
 
     el = Ellipse((2, -1), 0.5, 0.5)
     ax.annotate(tss, xy=(0, yaxis_annotation),  xycoords='data',
-                xytext=(-100, -100), textcoords='offset points',
+                xytext=(-100, -90), textcoords='offset points',
                 size=20,
                 arrowprops=dict(arrowstyle='fancy',#"wedge,tail_width=0.7",
                                 fc="0.6", ec="none",
@@ -358,10 +358,6 @@ def main():
             If two input files are given in one line, its also possible to plot control vs. affected per gene.
             In the end all gene will be plotted in one plot using the TSS as overlay-point.
         """
-        scores = list()
-        positions = list()
-        coverage = list()
-
         p = multiprocessing.Pool( options.processors )
         if options.configfile:
             results = p.map_async(plot_regions, parse_configfile(options))
@@ -374,9 +370,6 @@ def main():
 
         # for each gene region we get a list of scores (methylation levels), gene positions and the corresponding coverage
         for s, p, c in results_iterator:
-            scores += s
-            positions += p
-            coverage += c
             # if you habe specified two file for one gene region, iterate over it
             position_dict = defaultdict(dict)
             for pos_list, score_list, cov_list in zip(p, s, c):
