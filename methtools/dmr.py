@@ -61,11 +61,12 @@ class Window():
         Such a window will start with a min_size and grow dynamically until a 
         treshold is undercuted.
     """
-    def __init__(self, min_window_length = 4, max_cpg_distance = None, min_delta_methylation = 25, last_n = 4, allow_failed = None):
+    def __init__(self, min_window_length = 4, max_cpg_distance = None, min_delta_methylation = 25, last_n = 4, allow_failed = None, options = None):
         # constraints
         self.min_window_length = min_window_length
         self.max_cpg_distance = max_cpg_distance
         self.min_delta_methylation = min_delta_methylation
+        self.min_single_delta_methylation = options.min_single_delta_methylation
         self.last_n = last_n # check last n postitions ot the cpgs if they are over min_delta_methylation
         self.allow_failed = allow_failed
         # window properties
@@ -96,9 +97,21 @@ class Window():
             if self.max_cpg_distance and (cpg.end - last_site_position_end) > self.max_cpg_distance:
                 #print 'kick: max_cpg_distance', (cpg.end - self.get_last_cpg().end), cpg.end, - self.get_last_cpg().end, self.max_cpg_distance
                 return False
+
+        # check if the delta of methylated CpGs is not larger than self.min_single_delta_methylation
+        # take hyper or hypo from the windows into account
+        if self.min_single_delta_methylation != None:
+            # hypo, the delta from the windows is negativ (affected - control)
+            if self.delta < 0 and cpg.delta > -self.min_single_delta_methylation:
+                return False
+            elif self.delta > 0 and cpg.delta < self.min_single_delta_methylation:
+                return False
+            #if abs(cpg.delta) < self.min_single_delta_methylation:
+            #    return False
+
         if len(self) + 1 < self.min_window_length:
             return True
-        #print '---',self.calculate_window_methylation( self.get_last_n_cpgs( self.last_n ) ), len(self.get_last_n_cpgs( self.last_n )), self.last_n
+
         # get the last_n cpg site from the current window, n-1 because we want to check with the new cpg site
         if self.allow_failed != None:
             if self.allow_failed == 0:
@@ -258,7 +271,7 @@ def dmr(options):
         control_quantil = mquantiles( np.loadtxt(options.control, delimiter='\t', usecols=(3,)), prob = [options.filter_quantil])[0]
         affected_quantil = mquantiles( np.loadtxt(options.affected, delimiter='\t', usecols=(3,)), prob = [options.filter_quantil])[0]
 
-    win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed)
+    win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed, options)
     old_chrom = False
 
     for control, affected in izip(open(options.control), open(options.affected)):
@@ -279,7 +292,7 @@ def dmr(options):
             if len(win) >= options.min_window_length:
                 win.write_to_bed_file( options.outfile, options.fisher, options.hyper, options.hypo)
             # init a new window
-            win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed)
+            win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed, options)
 
         if c_cov < options.min_cov or a_cov < options.min_cov:
             continue
@@ -296,7 +309,11 @@ def dmr(options):
                 win.write_to_bed_file( options.outfile, options.fisher, options.hyper, options.hypo)
 
             # create a new window with, if we have remainings frome the previouse window, add these at start cpgs
-            win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed)
+            win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed, options)
+            # try to add the CpG that is responsible for the abort, as new starting 
+            # TODO
+            if not win.add_cpg( cpg ):
+                win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed, options)
         old_chrom = c_chrom
 
 
@@ -325,7 +342,10 @@ def main():
                     help="minimal window length (default:4)")
 
     parser.add_argument("--min-delta-methylation", dest="min_delta_methylation", default=25, type=int,
-                    help="minimal delta between the two mehylation states (default:25)")
+                    help="minimal delta between two mehylation states (default:25)")
+
+    parser.add_argument("--min-single-delta-methylation", dest="min_single_delta_methylation", default=None, type=int,
+                    help="minimal delta between two mehylation sites [None]")
 
     parser.add_argument("--check-last-n", dest="check_last_n", metavar = 'N', default=4, type=int,
                     help="check last N CpG sites if they fullfill all constraints (default:4)")
