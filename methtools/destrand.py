@@ -70,7 +70,7 @@ def main():
         type=argparse.FileType('w'),
         default=sys.stdout)
 
-    parser.add_argument('-k', '--keep-positions', dest="keep_positions", action='store_true', default=False, help='Keep the position from both sites.')
+    parser.add_argument('-k', '--keep-positions', dest="keep_positions", action='store_true', default=False, help='Keep the position from both methylation sites.')
 
     options = parser.parse_args()
     merge(options.infile, options.outfile, options.keep_positions)
