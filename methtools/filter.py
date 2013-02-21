@@ -24,7 +24,7 @@ def filtering(control_file, affected_file, filtered_control_file, filtered_affec
     if filter_quantil:
         control_quantil = mquantiles( np.loadtxt(control_file, delimiter='\t', usecols=(3,)), prob = [filter_quantil])[0]
         affected_quantil = mquantiles( np.loadtxt(affected_file, delimiter='\t', usecols=(3,)), prob = [filter_quantil])[0]
-        print control_quantil, affected_quantil
+        #print control_quantil, affected_quantil
 
     for control_line, affected_line in izip(open(control_file), open(affected_file)):
         c_chrom, c_start, c_end, c_cov, c_meth, c_strand = control_line.strip().split('\t')
