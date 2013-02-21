@@ -3,7 +3,7 @@
 
 import argparse
 import sys
-import subprocess
+import sqlalchemy
 import StringIO
 from contextlib import closing
 
@@ -122,7 +122,7 @@ class Windows():
 def read_genome_file(genome_path):
     """
         Arguments:
-            genome_path -- file like opject
+            genome_path -- file like object
 
         Return:
             dictionary with chromosome name <-> size mapping
@@ -202,14 +202,13 @@ def tiling( options ):
     elif options.organism_tag:
         options.organism_tag = options.organism_tag.strip()
         try:
-            # TODO: port over to sqlalchemy
-            command = 'mysql --user=genome --host=genome-mysql.cse.ucsc.edu -A -e'.split()
-            command.append( "select chrom, size from %s.chromInfo" % options.organism_tag )
-            p = subprocess.Popen(command, stdout=subprocess.PIPE)
-            output, err = p.communicate()
+            engine = sqlalchemy.create_engine('mysql://genome@genome-mysql.cse.ucsc.edu')
+            output = engine.execute("select chrom, size from %s.chromInfo" % options.organism_tag)
+            output = ''.join(['%s\t%s\n' % (r[0],r[1]) for r in output])
             genome_file = StringIO.StringIO( output )
             genome_size = read_genome_file( genome_file )
         except:
+            raise
             sys.exit('Fetching of the genome file failed! You need a working internet connection and mysql client installed.\nPlease download manually and specify it ith --genome_file.')
     else:
         sys.exit('Please specify a genome file or an organism tag.')
