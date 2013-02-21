@@ -200,9 +200,11 @@ def tiling( options ):
     if options.genome_file:
         genome_size = read_genome_file( open(options.genome_file) )
     elif options.organism_tag:
+        options.organism_tag = options.organism_tag.strip()
         try:
+            # TODO: port over to sqlalchemy
             command = 'mysql --user=genome --host=genome-mysql.cse.ucsc.edu -A -e'.split()
-            command.append( "select chrom, size from mm10.chromInfo" )
+            command.append( "select chrom, size from %s.chromInfo" % options.organism_tag )
             p = subprocess.Popen(command, stdout=subprocess.PIPE)
             output, err = p.communicate()
             genome_file = StringIO.StringIO( output )
@@ -300,11 +302,11 @@ def main():
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('-g', '--genome_file', help="Genome file should tab delimited and structured as follows: <chrom name><TAB><chrom size>")
-    group.add_argument('--organism_tag', help="If no genome file is specified we try to download the file with the unique organism identifier, e.g. mm10 or hg18")
-    parser.add_argument('-m','--merge_strands', action='store_true', default=False, help='Sum up all methylation sites independent from the strand. In that case the output will be a BED-graph file.')
-    parser.add_argument('--all_windows', action='store_true', default=False, help='Write also windows with no methylation sites to the result file - default: False')
-    parser.add_argument('-w', '--window_length', type=int, default=1000, help='Length of the sliding window - default: 1000')
-    parser.add_argument('-s', '--step_size', type=int, default=500, help='Step size - default: 500')
+    group.add_argument('--organism-tag', dest='organism_tag' ,help="If no genome file is specified we try to download the file with the unique organism identifier, e.g. mm10 or hg18")
+    parser.add_argument('-m','--merge-strands', dest='merge_strands', action='store_true', default=False, help='Sum up all methylation sites independent from the strand. In that case the output will be a BED-graph file.')
+    parser.add_argument('--all-windows', dest="all_windows", action='store_true', default=False, help='Write also windows with no methylation sites to the result file - default: False')
+    parser.add_argument('-w', '--window-length', dest="window_length", type=int, default=1000, help='Length of the sliding window - default: 1000')
+    parser.add_argument('-s', '--step-size', dest="step_size", type=int, default=500, help='Step size - default: 500')
     parser.add_argument('--density', action='store_true', default=False, 
         help='Calculate the methylation density: Sum over all methylation sites / nucleotides (window_length). Default calculation mode is the mean methylation: Sum over all methylation sites / methylated sites')
 
