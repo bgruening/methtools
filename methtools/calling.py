@@ -142,6 +142,39 @@ def processnonCGmethHash( nonCGmethHash, summary_forward_temp, summary_reverse_t
     nonCGmethHash = {}
 """
 
+
+def process_cigar(cigar, mcalls, quals):
+    """
+    Processes the cigar string and remove and delete elements from mcalls and quality scores
+    Cigar is a tuple of tuples (operation, length). Operation can be one of the following:
+    MATCH = 0
+    INS = 1
+    DEL = 2
+    REF_SKIP = 3
+    SOFT_CLIP = 4
+    HARD_CLIP = 5
+    PAD = 6
+
+    >>> process_cigar(((0,18),(1,5),(0,12)), '...hh..x......h....h.h......h.z....', '<<<<<<<<<<<<<:<<<<<<<<<<<<<<<<<<<<<' )
+    ('...hh..x......h........h.z....', '<<<<<<<<<<<<<:<<<<<<<<<<<<<<<<')
+
+    """
+    new_quals = ''
+    new_mcalls = ''
+    current_position = 0
+    for operation, length in cigar:
+        if operation == 0: # match
+            new_quals += quals[current_position:current_position+length]
+            new_mcalls += mcalls[current_position:current_position+length]
+        elif operation == 1: # insertions
+            pass
+        elif operation == 2: # deletions
+            new_quals += '.' * length
+            new_mcalls += '.' * length
+        current_position += length
+    return (new_mcalls,new_quals)
+
+
 def process_sam(options, chromosome, temp_dir):
     min_qual = options.min_qual
     # create temp files
@@ -194,33 +227,22 @@ def process_sam(options, chromosome, temp_dir):
             return (CGmethHash, CHHmethHash, CHGmethHash)
     # for every read in the sam file
     for iteration, read in enumerate(samfile_iterator):
-        """
-        if iteration % 1000 == 0 and iteration != 0:
-            # write out the collected results and clean the dictionary
-            # otherwise the dictionary would be to large and slowing the process down dramatically
-            if temp_dir != 'temp_dir':
-                if options.CpG:
-                    processCGmethHash( CGmethHash, out_temp, options )
-                if options.CHH:
-                    processCHmethHash( CHHmethHash, CHH_out_temp, options)
-                if options.CHG:
-                    processCHmethHash( CHGmethHash, CHG_out_temp, options)
-                CGmethHash = dict()
-                CHHmethHash = dict()
-                CHGmethHash = dict()
-        """
-
-        start = read.pos + 1
-        end = read.aend #read.rlen + start + 1 # or len(read.seq)+start+1
+        start = read.pos + 1 # 0 based leftmost coordinate
+        end = read.aend     # aligned end position of the read -> read.rlen + start + 1 # or len(read.seq)+start+1
         chr = samfile.getrname( read.tid )
         methc = read.opt('XM')
-        mcalls = methc
-        quals = read.qual
-        mrnm = read.mrnm
-        mpos = read.mpos + 1
-        isize = read.isize #read.tlen
-        slen = read.rlen
+        mcalls = methc      # methylation calls
+        quals = read.qual   # quality scores
+        mrnm = read.mrnm    # the reference id of the mate
+        mpos = read.mpos + 1    # the position of the mate
+        isize = read.isize  #read.tlen
+        slen = read.rlen    # alignment sequence length
+        cigar = read.cigar  # cigar string
 
+        mcalls, quals = process_cigar(cigar, mcalls, quals)
+        #process_cigar(((0,18),(1,5),(0,12)), '...hh..x......h....h.h......h.z....', '<<<<<<<<<<<<<:<<<<<<<<<<<<<<<<<<<<<' )
+
+        # get strand
         if read.opt('XR') == 'CT' and read.opt('XG') == 'CT':
             # original top strand
             strand = '+'
@@ -244,16 +266,19 @@ def process_sam(options, chromosome, temp_dir):
             if there is no_overlap, trim the mcalls and quals
             adjust the start
         """
-        """
-        if options.no_overlap and mrnm == 0 and paired:
-            if (start + slen -1) > mpos:
-                if (mpos - start)
 
+        if options.no_overlap and mrnm == '=' and options.paired:
+            if (start + slen -1) > mpos:
+                if (mpos - start):
+                    mcalls = mcalls[: mpos-start]
+                    quals = quals[: mpos-start]
+
+        """
         if($nolap && ( ($mrnm eq "=") && $paired ) ){
 
             if( ($start+$slen-1)>$mpos){
                 if(($mpos-$start)>0)
-                    { #{continue;}
+                    { 
                 splice @mcalls,($mpos-$start);
                 splice @quals,($mpos-$start);
             }
@@ -523,6 +548,9 @@ def main():
     parser.add_argument("--methylkit", dest="is_methylkit", action="store_true", default=False,
                     help="Output will be in methylkit format. Default output format is BED6 format.")
 
+    parser.add_argument("--paired", dest="paired", action="store_true", default=False,
+                    help="Paired end SAM/BAM file.")
+
     parser.add_argument("--header", dest="is_header", action="store_true", default=False,
                     help="Print header into the output file.")
 
@@ -540,4 +568,6 @@ def main():
     calling(options)
 
 if __name__ == '__main__':
+    import doctest
+    doctest.testmod()
     main()
