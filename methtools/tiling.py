@@ -62,9 +62,9 @@ def create_window_broders(window_length, step_size, chrom_size):
     # return the last window with the exact end of the chromosome, that window is not window_length long but shorter
     if start:
         yield (start, chrom_size)
-    else:
-        # if no mapping to chrom_size is found we end up here
-        yield (None, None)
+
+    # if no accurate mapping to chrom_size is found we end up here and need to raise an error
+    yield (None, None)
 
 
 class Windows():
@@ -83,6 +83,14 @@ class Windows():
 
     def new_window(self):
         self.start, self.stop = self._windows.next()
+        if self.start == None and self.stop == None:
+            """ the chromosome tag is probably not correct, so the end of one 
+            chromosome given in the genome file does not fit with the 
+            coordinates from the input file
+            """
+            sys.stderr.write('Given chromosome tag does not fit with the given coordinates.\n')
+            sys.exit()
+
         # delete scores that do not belong to our window
         for base_position in self.density['+'].keys():
             if base_position < self.start:
