@@ -24,9 +24,9 @@ def filtering(control_file, affected_file, filtered_control_file, filtered_affec
     if filter_quantil:
         control_quantil = mquantiles( np.loadtxt(control_file, delimiter='\t', usecols=(3,)), prob = [filter_quantil])[0]
         affected_quantil = mquantiles( np.loadtxt(affected_file, delimiter='\t', usecols=(3,)), prob = [filter_quantil])[0]
-        #print control_quantil, affected_quantil
 
-    for control_line, affected_line in izip(open(control_file), open(affected_file)):
+    non_filtered_sites = 0
+    for site_counter, (control_line, affected_line) in enumerate( izip(open(control_file), open(affected_file)) ):
         c_chrom, c_start, c_end, c_cov, c_meth, c_strand = control_line.strip().split('\t')
         a_chrom, a_start, a_end, a_cov, a_meth, a_strand = affected_line.strip().split('\t')
         try:
@@ -62,9 +62,11 @@ def filtering(control_file, affected_file, filtered_control_file, filtered_affec
             if pvalue > max_pvalue:
                 continue
 
+        non_filtered_sites += 1
         filtered_control_file.write(control_line)
         filtered_affected_file.write(affected_line)
 
+    sys.stdout.write( "%s from %s filtered.\n" % (site_counter+1 - non_filtered_sites, site_counter + 1) )
     filtered_affected_file.close()
     filtered_control_file.close()
 
