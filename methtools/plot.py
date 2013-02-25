@@ -67,7 +67,7 @@ def parse_configfile( options ):
                     options.scale = False
                     options.bed = False
                     options.reverse = False
-                    options.yaxis_max = 105
+                    options.yaxis_max = 110
                     if scale.strip():
                         options.scale = True
                     if bed.strip():
@@ -204,7 +204,7 @@ def plot( scores, positions, options, overlay=False):
         ax.legend()
 
     ax.grid()
-    # default for options.yaxis_max is 105
+    # default for options.yaxis_max is 110
 
     if overlay:
         yaxis_min = -105
@@ -370,18 +370,18 @@ def main():
     parser.add_argument('--image', help='Path to the resulting image file. If not specified no image will be created.')
     parser.add_argument('--text', help='Path to the resulting coordinate file. If not specified no file will be created.')
 
-    parser.add_argument('-w', '--window_length', type=int, default=1000, help='Length of the surrounding window - default: 1000')
+    parser.add_argument('-w', '--window-length', dest='window_length', type=int, default=1000, help='Length of the surrounding window - default: 1000')
     parser.add_argument('-c', '--chromosome', help='Chromosome name', default=None)
     parser.add_argument('-r', '--reverse', action='store_true', default=False, help='Invert the x-axis to reflect the reverse strand of the gene.')
     parser.add_argument('-p', '--position', type=int, help='Chromosome position', default=None)
     parser.add_argument('--scale', action='store_true', default=False, help='scale the scores to be between 0 and 100')
-    parser.add_argument('--gene_name', help='If given use that name in the plot.')
+    parser.add_argument('--gene-name', dest='gene_name', help='If given use that name in the plot.')
     parser.add_argument('--bed', action='store_true', default=False, help='Input is in BED format, rather than in bedgraph format.')
     parser.add_argument('--configfile', default=None, help='Specify your input parameters in a config file. See more information below.')
     parser.add_argument('--coordinatefile', default=None, help='Extract the coordinates from a bed file.')
-    parser.add_argument('--yaxis_max', type=int, default=105, help='Set the maximum on the yaxis.')
+    parser.add_argument('--y-max', dest='yaxis_max', type=int, default=110, help='Set the maximum on the yaxis.')
     parser.add_argument('--overlay-only', dest='overlay_only', action='store_true', default=False, help='In configfile mode, only create the overlay image')
-    parser.add_argument('--min-coverage', dest='min_cov', type=int, default=0.0, help='Minimal allowed coverage. Default: 0')
+    parser.add_argument('--min-coverage', dest='min_cov', type=int, default=0, help='Minimal allowed coverage to plot a methylation site. Default: 0')
 
     parser.add_argument('--processors', type=int, default=multiprocessing.cpu_count())
 
