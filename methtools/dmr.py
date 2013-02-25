@@ -5,7 +5,6 @@ import os, sys
 import argparse
 import numpy as np
 import tempfile
-from scipy.stats.mstats import mquantiles
 from itertools import izip
 from scipy import stats
 
@@ -16,7 +15,7 @@ except:
 
 
 class CpG():
-    def __init__(self, chrom, start, end, strand, min_cov = 0, max_cov = 50):
+    def __init__(self, chrom, start, end, strand):
         # cpg properties
         self.chrom = chrom
         self.start = start
@@ -265,12 +264,6 @@ class Window():
 
 def dmr(options):
 
-    control_quantil = None
-    affected_quantil = None
-    if options.filter_quantil:
-        control_quantil = mquantiles( np.loadtxt(options.control, delimiter='\t', usecols=(3,)), prob = [options.filter_quantil])[0]
-        affected_quantil = mquantiles( np.loadtxt(options.affected, delimiter='\t', usecols=(3,)), prob = [options.filter_quantil])[0]
-
     win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed, options)
     old_chrom = False
 
@@ -293,13 +286,6 @@ def dmr(options):
                 win.write_to_bed_file( options.outfile, options.fisher, options.hyper, options.hypo)
             # init a new window
             win = Window(options.min_window_length, options.max_cpg_distance, options.min_delta_methylation, options.check_last_n, options.allow_failed, options)
-
-        if c_cov < options.min_cov or a_cov < options.min_cov:
-            continue
-        if c_cov > options.max_cov or a_cov > options.max_cov:
-            continue
-        if options.filter_quantil and (c_cov > control_quantil or a_cov > affected_quantil):
-            continue
 
         cpg = CpG( c_chrom, int(c_start), int(c_end), c_strand )
         cpg.add_control( float(c_cov), float(c_meth) )
@@ -328,15 +314,6 @@ def main():
 
     parser.add_argument('-o', '--outfile', type=argparse.FileType('w'),
                      default=sys.stdout)
-
-    parser.add_argument("--mincov", dest="min_cov", default=0, type=int,
-                    help="min coverage (default:0)")
-
-    parser.add_argument("--maxcov", dest="max_cov", default=50, type=int,
-                    help="max coverage (default:50)")
-
-    parser.add_argument("--filter-quantil", dest="filter_quantil", default=None, type=float,
-                    help="coverage quantil filter (default:None), example for the 99.9 quantil: 0.999")
 
     parser.add_argument("--min-window-length", dest="min_window_length", default=4, type=int,
                     help="minimal window length (default:4)")
