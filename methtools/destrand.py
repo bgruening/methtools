@@ -40,6 +40,7 @@ def merge_sites(c1, c2, keep_positions = False):
 
 def merge(sample, outfile, keep_positions = False):
     previouse_side = None
+    merged_counter = 0
     for sample_line in sample:
         if not previouse_side:
             previouse_side = sample_line
@@ -48,6 +49,7 @@ def merge(sample, outfile, keep_positions = False):
             merged, merged_sample = merge_sites (previouse_side, sample_line, keep_positions)
 
             if merged:
+                merged_counter += 1
                 previouse_side = None
                 outfile.write( '\t'.join(merged_sample) + '\n' )
             else:
@@ -56,6 +58,7 @@ def merge(sample, outfile, keep_positions = False):
     if previouse_side:
         outfile.write(previouse_side)
     outfile.close()
+    sys.stdout.write('%s sites merged.' % merged_counter)
 
 
 def main():
