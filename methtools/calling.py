@@ -238,7 +238,6 @@ def process_sam(options, chromosome, temp_dir):
         isize = read.isize  #read.tlen
         slen = read.rlen    # alignment sequence length
         cigar = read.cigar  # cigar string
-
         mcalls, quals = process_cigar(cigar, mcalls, quals)
         #process_cigar(((0,18),(1,5),(0,12)), '...hh..x......h....h.h......h.z....', '<<<<<<<<<<<<<:<<<<<<<<<<<<<<<<<<<<<' )
 
@@ -400,6 +399,14 @@ def calling( options ):
 
         # creating temp dir and and store all temporary results there
         temp_dir = tempfile.mkdtemp()
+        tmpbam = tempfile.NamedTemporaryFile( dir=temp_dir )
+        tmpbam_path = tmpbam.name
+        tmpbam.close()
+        #link bam and bam index to working directory, the *.bai index need to live besides the bam file
+        new_bam_path = '%s.bam' % tmpbam_path
+        os.symlink( options.input_path, new_bam_path )
+        os.symlink( options.bam_index, '%s.bam.bai' % tmpbam_path )
+        options.input_path = new_bam_path
         samfile = pysam.Samfile( options.input_path, reading_mode )
         # building a triple for each multiprocessing run -> (temp_dir, options, one chromosome)
         refs = samfile.references
@@ -411,6 +418,8 @@ def calling( options ):
         results_iterator = []
         p = multiprocessing.Pool( options.processors )
         p.map_async(run_calc, references, callback=results_iterator.extend)
+        #for reference in references:
+        #    results_iterator.extend( run_calc(reference) )
         p.close()
         p.join()
         #if options.summary:
@@ -524,6 +533,9 @@ def main():
                     required=True,
                     help="Path to the input file.")
 
+    parser.add_argument("--bam-index", dest="bam_index",
+                    help="Path to the bam index.")
+
     parser.add_argument("--CpG", dest="CpG",
                     help="output filename for CpG methylation scores (if not specified no file is written out)")
 
@@ -556,6 +568,9 @@ def main():
 
     parser.add_argument("--readlen", default=100, type=int,
                     help="Read length (default:100)")
+
+    parser.add_argument("--no-overlap", dest="no_overlap", action="store_true", default=False,
+                    help="Overlap allowed? TODO")
 
     #parser.add_argument("--summary",
     #                help="Create a summary file, this can take a significant amount of time and memory.")
