@@ -402,7 +402,7 @@ def main():
             pool.map_async(plot_regions, parse_configfile(options), callback=log_results)
         else:
             for opt in parse_coordinatefile(options):
-                pool.apply_async( plot_regions, args=opt, callback=log_result)
+                pool.apply_async( plot_regions, args=opt, callback=log_results)
 
         pool.close()
         pool.join()
