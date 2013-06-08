@@ -254,6 +254,9 @@ def process_sam(options, chromosome, temp_dir):
         elif read.opt('XR') == 'GA' and read.opt('XG') == 'GA':
             # complementary to original bottom strand, bismark says + strand to this
             strand = '-'
+        else:
+            sys.stdout.write('Warning: No strand found for %s (chr) %s (start) %s (end). Skip read.' % (chr, start, end))
+            continue
         # Check if the file is sorted
         if chr == chr_pre:
             if start_pre > start:
