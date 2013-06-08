@@ -9,8 +9,11 @@ def merge_sites(c1, c2, keep_positions = False):
         Merge two lines of a bed file together into one line if they only differ in one position and are located on different strands.
         In that case these two lines represent one symetric CpG and we can merge the coverage and methylation rate.
     """
-    c1_chrom, c1_start, c1_end, c1_cov, c1_meth, c1_strand = c1.strip().split('\t')
-    c2_chrom, c2_start, c2_end, c2_cov, c2_meth, c2_strand = c2.strip().split('\t')
+    try:
+        c1_chrom, c1_start, c1_end, c1_cov, c1_meth, c1_strand = c1.strip().split('\t')
+        c2_chrom, c2_start, c2_end, c2_cov, c2_meth, c2_strand = c2.strip().split('\t')
+    except:
+        sys.exit('Some lines did not have 6 columns (chrom, start, end, coverage, methylation, strand).\n%s\n%s\n' % (c1.strip(), c2.strip()))
     if c1_strand != c2_strand and int(c1_end) == (int(c2_end) - 1):
         # merge with weigthed mean
         c1_cov, c2_cov, c1_meth, c2_meth = map(float, [c1_cov, c2_cov, c1_meth, c2_meth])
