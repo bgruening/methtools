@@ -369,7 +369,7 @@ def calling( options ):
     min_cov = options.min_cov
 
     if options.CpG:
-        out = open( options.CpG, 'w+')
+        out = open( options.CpG, 'wb+')
         if options.is_header:
             if options.is_methylkit:
                 out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
@@ -377,7 +377,7 @@ def calling( options ):
                 out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
     if options.CHH:
-        CHH_out = open( options.CHH, 'w+' )
+        CHH_out = open( options.CHH, 'wb+' )
         if options.is_header:
             if options.is_methylkit:
                 CHH_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
@@ -385,7 +385,7 @@ def calling( options ):
                 out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
     if options.CHG:
-        CHG_out =  open( options.CHG, 'w+' )
+        CHG_out =  open( options.CHG, 'wb+' )
         if options.is_header:
             if options.is_methylkit:
                 CHG_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
@@ -449,17 +449,17 @@ def calling( options ):
     if options.CpG and multiproc:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CpG'):
-                shutil.copyfileobj( open(os.path.join(temp_dir, filename)), out )
+                shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), out )
         out.close()
     if options.CHH and multiproc:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CHH'):
-                shutil.copyfileobj( open(os.path.join(temp_dir, filename)), CHH_out )
+                shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), CHH_out )
         CHH_out.close()
     if options.CHG and multiproc:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CHG'):
-                shutil.copyfileobj( open(os.path.join(temp_dir, filename)), CHG_out )
+                shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), CHG_out )
         CHG_out.close()
     """
     if options.summary and multiproc:
