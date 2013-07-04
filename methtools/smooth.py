@@ -18,8 +18,6 @@ def smooth( options ):
     elif options.smooth_function == 'slepian':
         kwargs.update({'width': options.sw})
 
-    print kwargs, options
-
     df = pd.read_csv( options.infile, sep='\t', index_col=None, names=['chr', 'start', 'end', 'name', 'value', 'strand'], dtype={'strand': object} )
     df['aggregate'] = df.groupby( ['chr'] ).apply(lambda x: pd.rolling_window(x['value'], options.window_length, options.smooth_function, **kwargs ) )
 
