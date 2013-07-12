@@ -35,7 +35,7 @@ def filtering(control_file, affected_file, filtered_control_file, filtered_affec
             assert( c_end == a_end )
             assert( c_strand == a_strand )
         except AssertionError:
-            sys.exit('That file needs intersected inputfiles, so that each site is present in both files, affected and control.')
+            sys.exit('That file needs intersected inputfiles, so that each site is present in both files, affected and control.\n %s : %s \n %s : %s \n %s : %s \n %s : %s \n' % (c_chrom, a_chrom, c_start, a_start, c_end, a_end, c_strand, a_strand))
 
         c_cov, c_meth, a_cov, a_meth = map(float, [c_cov, c_meth, a_cov, a_meth])
         if min_cov != None and (a_cov < min_cov or c_cov < min_cov):
