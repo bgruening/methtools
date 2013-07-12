@@ -14,6 +14,7 @@ import copy
 from collections import defaultdict
 import math
 import signal
+import tempfile
 
 __doc__ = """
 
@@ -151,7 +152,7 @@ def moving_average(x, n, type='simple'):
     return a
 
 
-def plot( scores, positions, options, overlay=False):
+def plot( scores, positions, options, overlay=False, no_dots=False):
     """
         overlay is True if many dots are plotted, in that case we adjust the settings
     """
@@ -198,7 +199,8 @@ def plot( scores, positions, options, overlay=False):
             result.append((pos, temp))
 
         ma_pos, ma_scores = zip(*sorted(result))
-        ax.plot(positions, scores, '.', ms=3, lw=2, alpha=0.7, color='orange')
+        if not no_dots:
+            ax.plot(positions, scores, '.', ms=3, lw=2, alpha=0.7, color='orange')
         #ax.plot(ma_pos, moving_average(ma_scores, 7), color='blue', lw=2, label='MA (7)')
         ax.plot(ma_pos, moving_average(ma_scores, 20), color='red', lw=2, label='MA (20)')
         ax.legend()
@@ -263,13 +265,111 @@ def plot_regions( options ):
     positions = list()
     coverage = list()
 
-    for infile, outfile in zip(options.infiles, outfiles):
+    for infile, outfile in zip( options.infiles, outfiles ):
         if options.text and not options.overlay_only:
-            outfile = open(outfile, 'w+')
+            outfile = open( outfile, 'w+' )
         hit_found = False
         scores_temp = list()
         positions_temp = list()
         coverage_temp = list()
+
+        """
+        INSTALL
+        
+        http://pysam.googlecode.com/files/pysam-0.7.4.tar.gz
+        python ./setup.py install --home $INSTALL_DIR
+        
+        http://wwwfgu.anat.ox.ac.uk/~andreas/documentation/samtools/api.html
+
+        Index Bedfile beforehand:
+        pysam.tabix_compress() tabix_compress(filename_in, filename_out, force=False)
+        pysam.tabix_index()
+
+        tabix_index(filename, force=False, seq_col=None, start_col=None, end_col=None, preset=None, meta_char=’#’, zerobased=False)
+        If preset is provided, the column coordinates are taken from a preset. Valid values for preset are “gff”, “bed”, “sam”, “vcf”, psltbl”, “pileup”.
+
+        pysam.Tabixfile(filename, mode=’r’)
+        opens a tabix file for reading. A missing index (filename + ”.tbi”) will raise an exception.
+
+        contigs
+        chromosome names
+
+        fetch
+        Tabixfile.fetch(self, reference=None, start=None, end=None, region=None, parser=None)
+
+        fetch one or more rows in a region using 0-based indexing. The region is specified by reference, start and end. Alternatively, a samtools region string can be supplied.
+
+        Without reference or region all entries will be fetched.
+
+        If only reference is set, all reads matching on reference will be fetched.
+
+        If parser is None, the results are returned as an unparsed string. Otherwise, parser is assumed to be a functor that will return parsed data (see for example asTuple() and asGTF()).
+
+        """
+    """
+    for infile, outfile in zip( options.infiles, outfiles ):
+        hit_found = False
+        scores_temp = list()
+        positions_temp = list()
+        coverage_temp = list()
+
+        sort -k1,1 -k2,2n Galaxy4.bed | bgzip > sorted_galaxy4.bed.gz
+        compressed_sorted_bedfile = tempfile.NamedTemporaryFile( suffix='.gz' ).name
+        tmp_out = open( compressed_sorted_bedfile, 'wb' )
+
+        cmd = 'sort -k1,1 -k2,2n %s' % ( infile )
+
+        p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+        proc = subprocess.Popen( ['bgzip'], stdin=p1.stdout, stdout=tmp_out )
+        returncode = proc.wait()
+        if returncode != 0:
+            raise Exception, 'sorting and creating tabix index failed'
+        tmp_out.close()
+
+        cmd = "tabix %s %s:%s-%s" % (compressed_sorted_bedfile, options.chromosome, (options.position - distance), (options.position + distance))
+        proc = subprocess.Popen( args=shlex.split( cmd ), stdout=outfile )
+        returncode = proc.wait()
+
+        if returncode != 0:
+            raise Exception, 'tabix reading failed'
+
+        for bed_line in open( outfile ):
+            try:
+                if options.bed:
+                    chrom, start, stop, cov, score, strand = bed_line.strip().split()
+                    # im fall von 2 files, schmeist er nur einen raus, evt beides implementieren? TODO
+                    if float(cov) < options.min_cov:
+                        continue
+                else:
+                    chrom, start, stop, score = bed_line.strip().split()
+            except:
+                sys.exit('Wrong input format. Have a look at the --bed option.')
+            start = int(start)
+            score = float(score)
+
+            if options.scale:
+                scores_temp.append( score * 100 )
+            else:
+                scores_temp.append( score )
+
+            if options.reverse:
+                positions_temp.append( (start - options.position)*-1 )
+            else:
+                positions_temp.append( start - options.position )
+            
+            coverage_temp.append( cov )
+
+        scores.append(scores_temp)
+        positions.append(positions_temp)
+        coverage.append(coverage_temp)
+
+        if not options.text or options.overlay_only:
+            os.remove( outfile )
+    """
+
+
+
+        ########################################################################## old method ###################################
 
         for bed_line in open(infile):
             if bed_line.startswith(options.chromosome):
@@ -315,6 +415,8 @@ def plot_regions( options ):
         coverage.append(coverage_temp)
         if options.text and not options.overlay_only:
             outfile.close()
+
+    ######################### old zu ende ############
 
     if options.image and not options.overlay_only:
         plot( scores, positions, options )
@@ -381,6 +483,7 @@ def main():
     parser.add_argument('--coordinatefile', default=None, help='Extract the coordinates from a bed file.')
     parser.add_argument('--y-max', dest='yaxis_max', type=int, default=110, help='Set the maximum on the yaxis.')
     parser.add_argument('--overlay-only', dest='overlay_only', action='store_true', default=False, help='In configfile mode, only create the overlay image')
+    parser.add_argument('--no-dots', dest='no_dots', action='store_true', default=False, help='In overlay image, omit the dots only print the smooth line')
     parser.add_argument('--min-coverage', dest='min_cov', type=int, default=0, help='Minimal allowed coverage to plot a methylation site. Default: 0')
 
     parser.add_argument('--processors', type=int, default=multiprocessing.cpu_count())
@@ -404,6 +507,7 @@ def main():
             #pool.map_async(plot_regions, parse_configfile(options), callback=log_results)
         else:
             # coordinatefile
+
             #pool.map_async(plot_regions, parse_coordinatefile(options), callback=log_results)
             for opt in parse_coordinatefile(options):
                 pool.apply_async( plot_regions, (opt,), callback=log_results)
@@ -416,7 +520,7 @@ def main():
         positions, scores = zip(*sorted( positions_scores ))
         options.image = 'all_merged.png'
         options.gene_name = None
-        plot( scores, positions, options, overlay=True)
+        plot( scores, positions, options, overlay=True, no_dots=options.no_dots)
 
         #with open('all_merged.txt', 'w+') as handle:
         #    for pos, score, cov in zip(positions, scores, coverage):
