@@ -39,7 +39,7 @@ __doc__ = """
         Default mode is mean methylation and if --density is set methylation density mode is on.
 
     Example program call for mouse genome mm10 and a control.bed file with window length 1000 and step-size 500:
-        ./aggregation.py -g mm10.genome -i control_sorted.bed -w 1000 -s 500 -o control_w1000_s500.bed
+        ./tiling.py -g mm10.genome -i control_sorted.bed -w 1000 -s 500 -o control_w1000_s500.bed
 """
 
 def create_window_broders(window_length, step_size, chrom_size):
@@ -216,8 +216,8 @@ def tiling( options ):
             genome_file = StringIO.StringIO( output )
             genome_size = read_genome_file( genome_file )
         except:
-            raise
             sys.exit('Fetching of the genome file failed! You need a working internet connection and mysql client installed.\nPlease download manually and specify it ith --genome_file.')
+
     else:
         sys.exit('Please specify a genome file or an organism tag.')
 
