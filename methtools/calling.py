@@ -21,20 +21,6 @@ import shutil
 
 """
 
-
-def get_reading_mode( options ):
-    if options.is_bam:
-        reading_mode = 'rb'
-    else:
-        ext = os.path.splitext( options.input_path )[-1]
-        if ext == '.bam':
-            reading_mode = 'rb'
-        else:
-            # here we assume a SAM file
-            reading_mode = 'r'
-    return reading_mode
-
-
 def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash, unknown_methHash ):
 
     if letter.upper() == "Z":
@@ -51,7 +37,7 @@ def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  
         else:
             # update other bases
             CGmethHash[key][2] += 1
-    elif letter in == ["U","u"]:
+    elif letter in ["U","u"]:
         # if methylated C is in an unknown context
         if not unknown_methHash.has_key(key):
             unknown_methHash[ key ] = [ 0, 0, 0 ]
@@ -65,7 +51,7 @@ def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  
         else:
             # update other bases
             unknown_methHash[key][2] += 1
-    elif letter in == ["X","x"]:
+    elif letter in ["X","x"]:
         # methylated C in CHG context or unmethylated C in CHG context
         if not CHGmethHash.has_key(key):
             CHGmethHash[ key ] = [ 0, 0, 0 ]
@@ -79,7 +65,7 @@ def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  
         else:
             # update other bases
             CHGmethHash[key][2] += 1
-    elif letter in == ["H","h"]:
+    elif letter in ["H","h"]:
         # methylated C in CHH context or unmethylated C in CHH context
         if not CHHmethHash.has_key(key):
             CHHmethHash[ key ] = [ 0, 0, 0 ]
@@ -195,24 +181,13 @@ def process_sam(options, chromosome, temp_dir):
     min_qual = options.min_qual
     # create temp files
     if options.CpG:
-        if temp_dir != 'temp_dir':
-            # multiprocessing mode
-            out_temp = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CpG', delete=False)
-
+        out_temp = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CpG', delete=False)
     if options.CHH:
-        if temp_dir != 'temp_dir':
-            # multiprocessing mode
-            CHH_out_temp = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CHH', delete=False)
-
+        CHH_out_temp = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CHH', delete=False)
     if options.CHG:
-        if temp_dir != 'temp_dir':
-            # multiprocessing mode
-            CHG_out_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CHG', delete=False)
-
+        CHG_out_temp = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CHG', delete=False)
     if options.unknown:
-        if temp_dir != 'temp_dir':
-            # multiprocessing mode
-            unknown_out_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='unknown', delete=False)
+        unknown_out_temp = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='unknown', delete=False)
 
 
     """
@@ -221,8 +196,7 @@ def process_sam(options, chromosome, temp_dir):
         summary_forward_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='nonCpG_forward', delete=False)
     """
 
-    reading_mode = get_reading_mode( options )
-    samfile = pysam.Samfile( options.input_path, reading_mode )
+    samfile = pysam.Samfile( options.input_path, 'rb' )
     offset = 33
     if options.phred64:
         offset = 64
@@ -238,16 +212,11 @@ def process_sam(options, chromosome, temp_dir):
     last_pos  =-1
     last_chrom = None
 
-    # if the reading morde is 'r' and not 'rb', we have a sam file and multiprocessing is disabled
-    # and we iterate over the whole genome
-    if reading_mode == 'r' or options.processors <= 1:
-        samfile_iterator = samfile
-    else:
-        try:
-            samfile_iterator = samfile.fetch(chromosome)
-        except:
-            sys.stderr.write('Could not fetch chromosome from BAM file. Probably the index is missing or currupted.\n')
-            return (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash)
+    try:
+        samfile_iterator = samfile.fetch(chromosome)
+    except:
+        sys.stderr.write('Could not fetch chromosome from BAM file. Probably the index is missing or currupted.\n')
+        return (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash)
     # for every read in the sam file
     for iteration, read in enumerate(samfile_iterator):
         start = read.pos + 1 # 0 based leftmost coordinate
@@ -317,19 +286,18 @@ def process_sam(options, chromosome, temp_dir):
         if (start - last_pos > options.readlen and last_pos != -1) or (chr != last_chrom and last_chrom != None):
             #processnonCGmethHash( nonCGmethHash, summary_forward_temp, summary_reverse_temp, options )
             #nonCGmethHash = dict()
-            if temp_dir != 'temp_dir':
-                if options.CpG:
-                    processCGmethHash( CGmethHash, out_temp, options )
-                if options.CHH:
-                    processCHmethHash( CHHmethHash, CHH_out_temp, options)
-                if options.CHG:
-                    processCHmethHash( CHGmethHash, CHG_out_temp, options)
-                if options.unknown:
-                    processCHmethHash( unknown_methHash, unknown_out_temp, options)
-                CGmethHash = dict()
-                CHHmethHash = dict()
-                CHGmethHash = dict()
-                unknown_methHash = dict()
+            if options.CpG:
+                processCGmethHash( CGmethHash, out_temp, options )
+            if options.CHH:
+                processCHmethHash( CHHmethHash, CHH_out_temp, options)
+            if options.CHG:
+                processCHmethHash( CHGmethHash, CHG_out_temp, options)
+            if options.unknown:
+                processCHmethHash( unknown_methHash, unknown_out_temp, options)
+            CGmethHash = dict()
+            CHHmethHash = dict()
+            CHGmethHash = dict()
+            unknown_methHash = dict()
 
 
         for index, letter in enumerate(quals):
@@ -352,29 +320,24 @@ def process_sam(options, chromosome, temp_dir):
     #    summary_forward_temp.close()
     #    summary_reverse_temp.close()
 
-    if temp_dir != 'temp_dir':
-        # in multiprocessing mode
-        if options.CpG:
-            processCGmethHash( CGmethHash, out_temp, options )
-        if options.CHH:
-            processCHmethHash( CHHmethHash, CHH_out_temp, options)
-        if options.CHG:
-            processCHmethHash( CHGmethHash, CHG_out_temp, options)
-        if options.unknown:
-            processCHmethHash( unknown_methHash, unknown_out_temp, options)
+    if options.CpG:
+        processCGmethHash( CGmethHash, out_temp, options )
+    if options.CHH:
+        processCHmethHash( CHHmethHash, CHH_out_temp, options)
+    if options.CHG:
+        processCHmethHash( CHGmethHash, CHG_out_temp, options)
+    if options.unknown:
+        processCHmethHash( unknown_methHash, unknown_out_temp, options)
 
-        # close temp files
-        if options.CpG:
-            out_temp.close()
-
-        if options.CHH:
-            CHH_out_temp.close()
-
-        if options.CHG:
-            CHG_out_temp.close()
-
-        if options.unknown:
-            unknown_out_temp.close()
+    # close temp files
+    if options.CpG:
+        out_temp.close()
+    if options.CHH:
+        CHH_out_temp.close()
+    if options.CHG:
+        CHG_out_temp.close()
+    if options.unknown:
+        unknown_out_temp.close()
 
     return (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash)
 
@@ -391,15 +354,12 @@ def run_calc( args ):
 
 def calling( options ):
     """
-        Read the files. First file is for now a special file. From that we only take the first gene and calculate
-        that against the other files.
-    """
-    reading_mode = get_reading_mode( options )
 
-    # check the file status produce flags 
+    """
     out = None
     CHH_out = None
     CHG_out = None
+    unknown_out = None
     min_cov = options.min_cov
 
     if options.CpG:
@@ -416,7 +376,7 @@ def calling( options ):
             if options.is_methylkit:
                 CHH_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
             else:
-                out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
+                CHH_out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
     if options.CHG:
         CHG_out =  open( options.CHG, 'wb+' )
@@ -424,81 +384,69 @@ def calling( options ):
             if options.is_methylkit:
                 CHG_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
             else:
-                out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
+                CHG_out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
-    # if the reading morde is 'r' and not 'rb', we have a sam file and multiprocessing is disabled.
-    if reading_mode == 'rb' and options.processors > 1:
-        multiproc = True
-        print "Multiprocessing mode started with %s" % options.processors
-
-        # creating temp dir and and store all temporary results there
-        temp_dir = tempfile.mkdtemp()
-        tmpbam = tempfile.NamedTemporaryFile( dir=temp_dir )
-        tmpbam_path = tmpbam.name
-        tmpbam.close()
-        #link bam and bam index to working directory, the *.bai index need to live besides the bam file
-        new_bam_path = '%s.bam' % tmpbam_path
-        os.symlink( options.input_path, new_bam_path )
-        os.symlink( options.bam_index, '%s.bam.bai' % tmpbam_path )
-        options.input_path = new_bam_path
-        samfile = pysam.Samfile( options.input_path, reading_mode )
-        # building a triple for each multiprocessing run -> (temp_dir, options, one chromosome)
-        refs = samfile.references
-        references = zip([temp_dir]*len( refs ), [options]*len( refs ), refs)
-        samfile.close()
-
-        #run_calc(references[1])
-        #sys.exit()
-        results_iterator = []
-        p = multiprocessing.Pool( options.processors )
-        p.map_async(run_calc, references, callback=results_iterator.extend)
-        #for reference in references:
-        #    results_iterator.extend( run_calc(reference) )
-        p.close()
-        p.join()
-        #if options.summary:
-        #    temp_summary_forward = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
-        #    temp_summary_reverse = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
-    else:
-        multiproc = False
-        print 'Single Mode activated. You can use multiple processors if you use a indexed BAM file.'
-        results_iterator = [ run_calc( ('temp_dir', options, 'all_chromosomes_at_once') ) ]
-        #temp_summary_forward = tempfile.NamedTemporaryFile(delete=False)
-        #temp_summary_reverse = tempfile.NamedTemporaryFile(delete=False)
+    if options.unknown:
+        unknown_out =  open( options.unknown, 'wb+' )
+        if options.is_header:
+            if options.is_methylkit:
+                unknown_out.write( "chrBase\tchr\tbase\tstrand\tcoverage\tfreqC\tfreqT\n" )
+            else:
+                unknown_out.write( "chr\tstart\tend\tname\tscore\tstrand\n" )
 
 
-    for result in results_iterator:
-        (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash) = result
+    print("Multiprocessing mode started with %s" % options.processors)
 
-        # if not in multiprocessing mode, than write down all collected results
-        if not multiproc:
-            if options.CpG:
-                processCGmethHash( CGmethHash, out, min_cov )
-            if options.CHH:
-                processCHmethHash( CHHmethHash, CHH_out, min_cov)
-            if options.CHG:
-                processCHmethHash( CHGmethHash, CHG_out, min_cov)
-            if options.unknown:
-                processCHmethHash( unknown_methHash, CHG_out, min_cov)
+    # creating temp dir and and store all temporary results there
+    temp_dir = tempfile.mkdtemp()
+    tmpbam = tempfile.NamedTemporaryFile( dir=temp_dir )
+    tmpbam_path = tmpbam.name
+    tmpbam.close()
+    #link bam and bam index to working directory, the *.bai index need to live besides the bam file
+    new_bam_path = '%s.bam' % tmpbam_path
+    os.symlink( options.input_path, new_bam_path )
+    os.symlink( options.bam_index, '%s.bam.bai' % tmpbam_path )
+    options.input_path = new_bam_path
+    samfile = pysam.Samfile( options.input_path, 'rb' )
+    # building a triple for each multiprocessing run -> (temp_dir, options, one chromosome)
+    refs = samfile.references
+    references = zip([temp_dir]*len( refs ), [options]*len( refs ), refs)
+    samfile.close()
 
-    # if in multiprocessing mode, than collect all temporary files and write them down to the output file
-    if options.CpG and multiproc:
+    results_iterator = []
+    p = multiprocessing.Pool( options.processors )
+    p.map_async(run_calc, references, callback=results_iterator.extend)
+    #for reference in references:
+    #    results_iterator.extend( run_calc(reference) )
+    p.close()
+    p.join()
+    #if options.summary:
+    #    temp_summary_forward = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
+    #    temp_summary_reverse = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
+
+    if options.CpG:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CpG'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), out )
         out.close()
-    if options.CHH and multiproc:
+    if options.CHH:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CHH'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), CHH_out )
         CHH_out.close()
-    if options.CHG and multiproc:
+    if options.CHG:
         for filename in os.listdir(temp_dir):
             if filename.startswith('CHG'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), CHG_out )
         CHG_out.close()
+    if options.unknown:
+        for filename in os.listdir(temp_dir):
+            if filename.startswith('unknown'):
+                shutil.copyfileobj( open(os.path.join(temp_dir, filename), "rb"), unknown_out )
+        unknown_out.close()
+
     """
-    if options.summary and multiproc:
+    if options.summary:
         for filename in os.listdir(temp_dir):
             if filename.startswith('nonCpG_forward'):
                 shutil.copyfileobj( open(os.path.join(temp_dir, filename)), temp_summary_forward )
@@ -510,8 +458,7 @@ def calling( options ):
         summary_reverse = np.loadtxt( temp_summary_reverse.name )
     """
     # cleaning temporary working directory
-    if multiproc:
-        shutil.rmtree( temp_dir )
+    shutil.rmtree( temp_dir )
 
     """
     if not options.summary:
@@ -567,7 +514,7 @@ def main():
 
     parser.add_argument("-i", "--input", dest="input_path",
                     required=True,
-                    help="Path to the input file.")
+                    help="Path to the BAM input file.")
 
     parser.add_argument("--bam-index", dest="bam_index",
                     help="Path to the bam index.")
@@ -591,10 +538,7 @@ def main():
                     help="min coverage (default:0)")
 
     parser.add_argument("--minqual", dest="min_qual", default=20, type=int,
-                    help="minquality   (default:20)")
-
-    parser.add_argument("--bam", dest="is_bam", action="store_true", default=False,
-                    help="If specified the input file is in BAM format, otherwise the type is guessed from the filename extension.")
+                    help="minquality (default:20)")
 
     parser.add_argument("--methylkit", dest="is_methylkit", action="store_true", default=False,
                     help="Output will be in methylkit format. Default output format is BED6 format.")
