@@ -35,7 +35,7 @@ def get_reading_mode( options ):
     return reading_mode
 
 
-def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash ):
+def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash, unknown_methHash ):
 
     if letter.upper() == "Z":
         # if genomic base is CpG
@@ -51,36 +51,52 @@ def process_call_string( letter, key, CGmethHash, nonCGmethHash,  CHHmethHash,  
         else:
             # update other bases
             CGmethHash[key][2] += 1
-    else:
-        #if genomic base is non-CpG
-        #if not nonCGmethHash.has_key(key):
-        #    nonCGmethHash[ key ] = [ 0, 0, 0 ]
+    elif letter in == ["U","u"]:
+        # if methylated C is in an unknown context
+        if not unknown_methHash.has_key(key):
+            unknown_methHash[ key ] = [ 0, 0, 0 ]
 
-        if letter.upper() == "X" and not CHGmethHash.has_key(key):
-            CHGmethHash[key] = [0,0,0]
-        elif letter.upper() == "H" and not CHHmethHash.has_key(key):
-            CHHmethHash[key] = [0,0,0]
+        if letter == "Z":
+            # update Cs
+            unknown_methHash[key][0] += 1
+        elif letter == "z":
+            # update Ts
+            unknown_methHash[key][1] += 1
+        else:
+            # update other bases
+            unknown_methHash[key][2] += 1
+    elif letter in == ["X","x"]:
+        # methylated C in CHG context or unmethylated C in CHG context
+        if not CHGmethHash.has_key(key):
+            CHGmethHash[ key ] = [ 0, 0, 0 ]
 
-        if letter == "X":
-            #nonCGmethHash[key][0] += 1
+        if letter == "Z":
+            # update Cs
             CHGmethHash[key][0] += 1
-        elif letter == "H":
-            #nonCGmethHash[key][0] += 1
-            CHHmethHash[key][0] += 1
-        elif letter == "x":
-            #nonCGmethHash[key][1] += 1
+        elif letter == "z":
+            # update Ts
             CHGmethHash[key][1] += 1
-        elif letter == "h":
-            #nonCGmethHash[key][1] += 1
+        else:
+            # update other bases
+            CHGmethHash[key][2] += 1
+    elif letter in == ["H","h"]:
+        # methylated C in CHH context or unmethylated C in CHH context
+        if not CHHmethHash.has_key(key):
+            CHHmethHash[ key ] = [ 0, 0, 0 ]
+
+        if letter == "Z":
+            # update Cs
+            v[key][0] += 1
+        elif letter == "z":
+            # update Ts
             CHHmethHash[key][1] += 1
         else:
-            #this condition will never be used
-            #nonCGmethHash[key][2] += 1
-            if  letter.upper() == "X":
-                CHGmethHash[key][2] += 1
-            else:
-                CHHmethHash[key][2] += 1
-    #return (CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash)
+            # update other bases
+            CHHmethHash[key][2] += 1
+    else:
+        sys.exit('Error: Unknown methylation encoding found.')
+
+    return (CGmethHash, nonCGmethHash,  CHHmethHash,  CHGmethHash, unknown_methHash)
 
 
 # process a given CG methlation hash
@@ -193,6 +209,12 @@ def process_sam(options, chromosome, temp_dir):
             # multiprocessing mode
             CHG_out_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='CHG', delete=False)
 
+    if options.unknown:
+        if temp_dir != 'temp_dir':
+            # multiprocessing mode
+            unknown_out_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='unknown', delete=False)
+
+
     """
     if options.summary:
         summary_reverse_temp =  tempfile.NamedTemporaryFile(dir=temp_dir, prefix='nonCpG_reverse', delete=False)
@@ -209,6 +231,7 @@ def process_sam(options, chromosome, temp_dir):
     CGmethHash = dict()
     CHHmethHash = dict()
     CHGmethHash = dict()
+    unknown_methHash = dict()
 
     start_pre = -1
     chr_pre = ''
@@ -224,7 +247,7 @@ def process_sam(options, chromosome, temp_dir):
             samfile_iterator = samfile.fetch(chromosome)
         except:
             sys.stderr.write('Could not fetch chromosome from BAM file. Probably the index is missing or currupted.\n')
-            return (CGmethHash, CHHmethHash, CHGmethHash)
+            return (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash)
     # for every read in the sam file
     for iteration, read in enumerate(samfile_iterator):
         start = read.pos + 1 # 0 based leftmost coordinate
@@ -301,9 +324,12 @@ def process_sam(options, chromosome, temp_dir):
                     processCHmethHash( CHHmethHash, CHH_out_temp, options)
                 if options.CHG:
                     processCHmethHash( CHGmethHash, CHG_out_temp, options)
+                if options.unknown:
+                    processCHmethHash( unknown_methHash, unknown_out_temp, options)
                 CGmethHash = dict()
                 CHHmethHash = dict()
                 CHGmethHash = dict()
+                unknown_methHash = dict()
 
 
         for index, letter in enumerate(quals):
@@ -314,7 +340,7 @@ def process_sam(options, chromosome, temp_dir):
             else:
                 key = '|'.join( ["R",chr,str(start + index)] )
 
-            process_call_string(mcalls[index], key, CGmethHash, nonCGmethHash, CHHmethHash, CHGmethHash)
+            process_call_string(mcalls[index], key, CGmethHash, nonCGmethHash, CHHmethHash, CHGmethHash, unknown_methHash)
 
         last_pos = end
         last_chrom = chr
@@ -334,6 +360,8 @@ def process_sam(options, chromosome, temp_dir):
             processCHmethHash( CHHmethHash, CHH_out_temp, options)
         if options.CHG:
             processCHmethHash( CHGmethHash, CHG_out_temp, options)
+        if options.unknown:
+            processCHmethHash( unknown_methHash, unknown_out_temp, options)
 
         # close temp files
         if options.CpG:
@@ -345,7 +373,10 @@ def process_sam(options, chromosome, temp_dir):
         if options.CHG:
             CHG_out_temp.close()
 
-    return (CGmethHash, CHHmethHash, CHGmethHash)
+        if options.unknown:
+            unknown_out_temp.close()
+
+    return (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash)
 
 
 
@@ -437,7 +468,7 @@ def calling( options ):
 
 
     for result in results_iterator:
-        (CGmethHash, CHHmethHash, CHGmethHash) = result
+        (CGmethHash, CHHmethHash, CHGmethHash, unknown_methHash) = result
 
         # if not in multiprocessing mode, than write down all collected results
         if not multiproc:
@@ -447,6 +478,8 @@ def calling( options ):
                 processCHmethHash( CHHmethHash, CHH_out, min_cov)
             if options.CHG:
                 processCHmethHash( CHGmethHash, CHG_out, min_cov)
+            if options.unknown:
+                processCHmethHash( unknown_methHash, CHG_out, min_cov)
 
     # if in multiprocessing mode, than collect all temporary files and write them down to the output file
     if options.CpG and multiproc:
@@ -547,6 +580,9 @@ def main():
 
     parser.add_argument("--CHG", dest="CHG",
                     help="output filename for CHG methylation scores (if not specified no file is written out)")
+
+    parser.add_argument("--unknown", dest="unknown",
+                    help="output filename for methylation sites with unknown context (if not specified no file is written out)")
 
     parser.add_argument("--phred64", dest="phred64", action="store_true", default=False,
                     help="quality scores phred64 scale used otherwise phred33 is the default")
